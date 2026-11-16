@@ -5,12 +5,11 @@ from typing import Callable, IO, Union
 import pandas as pd
 from src.ingestion.models import LayoutType, ValidationResult
 from src.ingestion.detector import read_and_detect
-from src.ingestion.validator_2017 import validate_ispu_2017
+from src.ingestion.validator_layout_a import validate_layout_a
 
 # Registry of layout validators
-# Layout A handles 2016, 2017, 2018, 2020 layout schema
 VALIDATOR_REGISTRY: dict[LayoutType, Callable[[pd.DataFrame], ValidationResult]] = {
-    LayoutType.LAYOUT_A: validate_ispu_2017,
+    LayoutType.LAYOUT_A: validate_layout_a,
 }
 
 

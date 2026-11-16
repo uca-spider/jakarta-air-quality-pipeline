@@ -51,6 +51,7 @@ Profiled on 8 Nov 2026 (initial 5 files) and updated on 16 Nov 2026 from nine do
 ### 2016 (clean, leap year)
 - Exactly 1,830 rows (5 stations x 366 days); 366 distinct days per station; no duplicates (observed).
 - 76 rows in late December use `dd/mm/yyyy` format, while the rest use standard ISO `YYYY-MM-DD` (observed).
+- **Period mismatches in 2016 (observed):** 160 rows have a date month that does not match `periode_data`. For September (`201609`), 120 rows (DKI2 to DKI5) have August dates (`2016-08-...`). For December (`201612`), 40 rows (DKI2 to DKI5) have November dates (`2016-11-...`). Successfully caught and routed to quarantine by the validator with `DATE_PERIOD_MISMATCH`.
 - 37 rows have empty `critical` and `max=0` with category `TIDAK ADA DATA` (observed).
 - Missing values in pollutant columns are consistently marked with `---`.
 
