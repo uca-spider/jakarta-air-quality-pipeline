@@ -1,0 +1,28 @@
+# secrets and local state
+.env
+*.json
+!dbt/**/*.json
+credentials/
+*.tfstate
+*.tfstate.*
+.terraform/
+*.tfvars
+!terraform.tfvars.example
+# python
+__pycache__/
+.venv/
+venv/
+.pytest_cache/
+# dbt
+dbt/target/
+dbt/logs/
+dbt/dbt_packages/
+# misc
+*.log
+# source data must not be committed (license unclear); keep it in Cloud Storage
+data/
+*.csv
+*.xlsx
+*.xls
+#superpowers
+.superpowers/

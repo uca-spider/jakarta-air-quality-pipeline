@@ -1,0 +1,3 @@
+project_id      = "your-gcp-project-id"
+raw_bucket_name = "your-unique-bucket-name-aq-raw"
+github_repo     = "uca-spider/jakarta-air-quality-pipeline"

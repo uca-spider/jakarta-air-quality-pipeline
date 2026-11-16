@@ -1,0 +1,36 @@
+# Git and local configs
+.git
+.gitignore
+.github
+.superpowers
+
+# Secrets and credentials (Strictly forbidden from container)
+.env
+*.json
+credentials/
+*.tfstate
+*.tfstate.*
+.terraform/
+*.tfvars
+
+# Data files (Strict pipeline rule: raw data lives in Cloud Storage, never baked into image)
+data/
+*.csv
+*.xlsx
+*.xls
+
+# Python and virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.pytest_cache/
+
+# dbt artifacts
+dbt/target/
+dbt/logs/
+dbt/dbt_packages/
+
+# Logs
+*.log
