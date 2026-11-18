@@ -6,10 +6,12 @@ import pandas as pd
 from src.ingestion.models import LayoutType, ValidationResult
 from src.ingestion.detector import read_and_detect
 from src.ingestion.validator_layout_a import validate_layout_a
+from src.ingestion.validator_2021 import validate_layout_a_pm25
 
 # Registry of layout validators
 VALIDATOR_REGISTRY: dict[LayoutType, Callable[[pd.DataFrame], ValidationResult]] = {
     LayoutType.LAYOUT_A: validate_layout_a,
+    LayoutType.LAYOUT_A_PM25: validate_layout_a_pm25,
 }
 
 
