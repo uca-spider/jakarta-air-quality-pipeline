@@ -10,6 +10,10 @@ from src.ingestion.dispatcher import (
     VALIDATOR_REGISTRY,
     dispatch_and_validate,
 )
+from src.ingestion.harmonizer import (
+    CANONICAL_COLUMNS,
+    harmonize_layout,
+)
 from src.ingestion.reader_2017 import read_ispu_2017_html, EXPECTED_COLUMNS_2017
 from src.ingestion.validator_2017 import validate_ispu_2017
 from src.ingestion.validator_layout_a import validate_layout_a
@@ -26,6 +30,8 @@ __all__ = [
     "read_and_detect",
     "VALIDATOR_REGISTRY",
     "dispatch_and_validate",
+    "CANONICAL_COLUMNS",
+    "harmonize_layout",
     "read_ispu_2017_html",
     "EXPECTED_COLUMNS_2017",
     "validate_ispu_2017",

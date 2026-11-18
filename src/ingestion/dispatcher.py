@@ -9,6 +9,7 @@ from src.ingestion.validator_layout_a import validate_layout_a
 from src.ingestion.validator_2021 import validate_layout_a_pm25
 from src.ingestion.validator_layout_b import validate_layout_b
 from src.ingestion.validator_layout_c import validate_layout_c
+from src.ingestion.harmonizer import harmonize_layout
 
 # Registry of layout validators
 VALIDATOR_REGISTRY: dict[LayoutType, Callable[[pd.DataFrame], ValidationResult]] = {
@@ -22,15 +23,17 @@ VALIDATOR_REGISTRY: dict[LayoutType, Callable[[pd.DataFrame], ValidationResult]]
 
 
 def dispatch_and_validate(
-    source: Union[str, Path, IO[str], IO[bytes]]
+    source: Union[str, Path, IO[str], IO[bytes]],
+    harmonize: bool = True,
 ) -> ValidationResult:
-    """Reads HTML table, detects layout, and dispatches to appropriate validator.
+    """Reads HTML table, detects layout, dispatches to validator, and optionally harmonizes valid rows.
 
     Args:
         source: File path, HTML string, or file-like object containing ISPU table.
+        harmonize: Whether to standardize valid rows into CANONICAL_COLUMNS (default: True).
 
     Returns:
-        ValidationResult: Segregated valid and quarantined DataFrames.
+        ValidationResult: Segregated valid (optionally harmonized) and quarantined DataFrames.
 
     Raises:
         LayoutMismatchError: If table cannot be read or layout is unknown.
@@ -45,4 +48,12 @@ def dispatch_and_validate(
             f"Available validators: {[k.value for k in VALIDATOR_REGISTRY.keys()]}"
         )
 
-    return validator(df)
+    result = validator(df)
+
+    if harmonize and not result.valid.empty:
+        harmonized_valid = harmonize_layout(result.valid, layout)
+        return ValidationResult(
+            valid=harmonized_valid, quarantined=result.quarantined
+        )
+
+    return result
