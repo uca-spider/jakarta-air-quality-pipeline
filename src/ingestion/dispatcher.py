@@ -8,6 +8,7 @@ from src.ingestion.detector import read_and_detect
 from src.ingestion.validator_layout_a import validate_layout_a
 from src.ingestion.validator_2021 import validate_layout_a_pm25
 from src.ingestion.validator_layout_b import validate_layout_b
+from src.ingestion.validator_layout_c import validate_layout_c
 
 # Registry of layout validators
 VALIDATOR_REGISTRY: dict[LayoutType, Callable[[pd.DataFrame], ValidationResult]] = {
@@ -15,6 +16,8 @@ VALIDATOR_REGISTRY: dict[LayoutType, Callable[[pd.DataFrame], ValidationResult]]
     LayoutType.LAYOUT_A_PM25: validate_layout_a_pm25,
     LayoutType.LAYOUT_B: validate_layout_b,
     LayoutType.LAYOUT_B_NO_PM25: validate_layout_b,
+    LayoutType.LAYOUT_C: validate_layout_c,
+    LayoutType.LAYOUT_C_BULAN: validate_layout_c,
 }
 
 
