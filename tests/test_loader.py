@@ -5,6 +5,7 @@ Strategy:
 - Verify that load_to_bigquery calls delete + insert with correct arguments
 - Verify metadata columns (source_file, file_hash, loaded_at) are injected
 - Verify idempotency: delete is always called before insert
+- Verify handling when table does not exist yet (first-time load)
 """
 
 import hashlib
@@ -12,6 +13,7 @@ import pandas as pd
 import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, patch, call
+from google.cloud.exceptions import NotFound
 
 from src.ingestion.models import ValidationResult, LayoutType
 from src.ingestion.loader import load_to_bigquery, compute_file_hash
@@ -123,6 +125,23 @@ def test_load_calls_delete_before_insert(mock_client_cls, tmp_path):
     query_calls = [c.args[0] for c in mock_client.query.call_args_list]
     assert any("ispu" in q and "DELETE" in q for q in query_calls)
     assert any("ispu_quarantine" in q and "DELETE" in q for q in query_calls)
+
+
+@patch("src.ingestion.loader.bigquery.Client")
+def test_load_handles_table_not_found_on_first_load(mock_client_cls, tmp_path):
+    """load_to_bigquery ignores NotFound on DELETE when tables do not exist yet."""
+    fake_file = tmp_path / "ISPU_2017.xls"
+    fake_file.write_bytes(b"fake content")
+    result = _make_result(n_valid=2, n_quarantine=0)
+
+    mock_client = MagicMock()
+    mock_client_cls.return_value = mock_client
+    # Simulate NotFound error on DELETE query
+    mock_client.query.side_effect = NotFound("Table not found")
+
+    # Should not raise exception
+    load_to_bigquery(result, source_file=fake_file, project="jakarta-air-quality")
+    assert mock_client.load_table_from_dataframe.call_count == 1
 
 
 @patch("src.ingestion.loader.bigquery.Client")

@@ -5,3 +5,4 @@ google-cloud-storage
 google-cloud-bigquery
 pytest
 lxml>=5.0.0
+pyarrow

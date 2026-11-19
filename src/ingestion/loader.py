@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from google.cloud import bigquery
+from google.cloud.exceptions import NotFound
 
 from src.ingestion.models import ValidationResult
 
@@ -24,12 +25,16 @@ def compute_file_hash(path: Path) -> str:
 
 
 def _delete_existing(client: bigquery.Client, project: str, table: str, file_hash: str) -> None:
-    """Delete rows previously loaded from the same source file."""
+    """Delete rows previously loaded from the same source file if table exists."""
     query = (
         f"DELETE FROM `{project}.{_DATASET}.{table}` "
         f"WHERE file_hash = '{file_hash}'"
     )
-    client.query(query).result()
+    try:
+        client.query(query).result()
+    except NotFound:
+        # Table does not exist yet (first-time load); nothing to delete.
+        pass
 
 
 def load_to_bigquery(
