@@ -2,6 +2,7 @@
 
 Strategy:
 - Mock dispatch_and_validate so tests don't touch real files
+- Mock load_to_bigquery so tests don't touch BigQuery
 - Capture stdout to assert printed output
 """
 
@@ -11,7 +12,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 from src.ingestion.models import ValidationResult, LayoutType
-from src.ingestion.cli import process_file, process_dir
+from src.ingestion.cli import process_file, process_dir, main
 
 
 # ---------------------------------------------------------------------------
@@ -36,9 +37,7 @@ def test_process_single_file_prints_summary(capsys, tmp_path):
 
     mock_result = _make_result(LayoutType.LAYOUT_A, n_valid=1825, n_quarantine=0)
 
-    with patch("src.ingestion.cli.dispatch_and_validate", return_value=mock_result) as mock_dispatch:
-        # Patch layout detection (returned as attribute on result by dispatcher)
-        # We pass layout_type back via the mock's side effect on result
+    with patch("src.ingestion.cli.dispatch_and_validate", return_value=mock_result):
         process_file(fake_file)
 
     captured = capsys.readouterr()
@@ -70,6 +69,36 @@ def test_process_file_layout_mismatch_prints_error(capsys, tmp_path):
     assert "error" in captured.out.lower() or "mismatch" in captured.out.lower()
 
 
+def test_process_file_with_load_calls_loader(capsys, tmp_path):
+    """process_file calls load_to_bigquery when load=True and project is provided."""
+    fake_file = tmp_path / "ISPU_2017.xls"
+    fake_file.write_text("<table></table>")
+
+    mock_result = _make_result(LayoutType.LAYOUT_A, n_valid=10, n_quarantine=0)
+
+    with patch("src.ingestion.cli.dispatch_and_validate", return_value=mock_result), \
+         patch("src.ingestion.cli.load_to_bigquery") as mock_loader:
+        process_file(fake_file, load=True, project="test-project")
+
+    mock_loader.assert_called_once_with(mock_result, source_file=fake_file, project="test-project")
+    captured = capsys.readouterr()
+    assert "Loaded to BigQuery" in captured.out or "BigQuery" in captured.out
+
+
+def test_process_file_without_load_does_not_call_loader(capsys, tmp_path):
+    """process_file does not call load_to_bigquery when load=False."""
+    fake_file = tmp_path / "ISPU_2017.xls"
+    fake_file.write_text("<table></table>")
+
+    mock_result = _make_result(LayoutType.LAYOUT_A, n_valid=10, n_quarantine=0)
+
+    with patch("src.ingestion.cli.dispatch_and_validate", return_value=mock_result), \
+         patch("src.ingestion.cli.load_to_bigquery") as mock_loader:
+        process_file(fake_file, load=False)
+
+    mock_loader.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # Test: process_dir
 # ---------------------------------------------------------------------------
@@ -89,3 +118,47 @@ def test_process_dir_processes_all_xls_files(capsys, tmp_path):
     assert "file_a.xls" in captured.out
     assert "file_b.xls" in captured.out
     assert "readme.txt" not in captured.out
+
+
+def test_process_dir_passes_load_flags(capsys, tmp_path):
+    """process_dir passes load and project down to process_file."""
+    (tmp_path / "file_a.xls").write_text("<table></table>")
+    mock_result = _make_result(LayoutType.LAYOUT_A, n_valid=10, n_quarantine=0)
+
+    with patch("src.ingestion.cli.dispatch_and_validate", return_value=mock_result), \
+         patch("src.ingestion.cli.load_to_bigquery") as mock_loader:
+        process_dir(tmp_path, load=True, project="test-project")
+
+    assert mock_loader.call_count == 1
+
+
+# ---------------------------------------------------------------------------
+# Test: main entrypoint
+# ---------------------------------------------------------------------------
+
+def test_main_with_load_and_project(tmp_path):
+    """main parses --load and --project and invokes process_file."""
+    fake_file = tmp_path / "ISPU_2017.xls"
+    fake_file.write_text("<table></table>")
+
+    mock_result = _make_result(LayoutType.LAYOUT_A, n_valid=5, n_quarantine=0)
+
+    with patch("src.ingestion.cli.dispatch_and_validate", return_value=mock_result), \
+         patch("src.ingestion.cli.load_to_bigquery") as mock_loader:
+        main(["--file", str(fake_file), "--load", "--project", "test-project"])
+
+    mock_loader.assert_called_once_with(mock_result, source_file=fake_file, project="test-project")
+
+
+def test_main_load_without_project_prints_error(capsys, tmp_path, monkeypatch):
+    """main prints an error when --load is passed without --project and without GCP_PROJECT env."""
+    fake_file = tmp_path / "ISPU_2017.xls"
+    fake_file.write_text("<table></table>")
+    monkeypatch.delenv("GCP_PROJECT", raising=False)
+    monkeypatch.delenv("GOOGLE_CLOUD_PROJECT", raising=False)
+
+    with pytest.raises(SystemExit):
+        main(["--file", str(fake_file), "--load"])
+
+    captured = capsys.readouterr()
+    assert "--project" in captured.err or "--project" in captured.out
