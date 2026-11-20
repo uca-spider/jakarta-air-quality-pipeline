@@ -26,14 +26,14 @@ def dispatch_and_validate(
     source: Union[str, Path, IO[str], IO[bytes]],
     harmonize: bool = True,
 ) -> ValidationResult:
-    """Reads HTML table, detects layout, dispatches to validator, and optionally harmonizes valid rows.
+    """Reads HTML table, detects layout, dispatches to validator, and optionally harmonizes rows.
 
     Args:
         source: File path, HTML string, or file-like object containing ISPU table.
-        harmonize: Whether to standardize valid rows into CANONICAL_COLUMNS (default: True).
+        harmonize: Whether to standardize valid and quarantined rows into canonical columns (default: True).
 
     Returns:
-        ValidationResult: Segregated valid (optionally harmonized) and quarantined DataFrames.
+        ValidationResult: Segregated valid and quarantined DataFrames (harmonized if requested).
 
     Raises:
         LayoutMismatchError: If table cannot be read or layout is unknown.
@@ -50,10 +50,19 @@ def dispatch_and_validate(
 
     result = validator(df)
 
-    if harmonize and not result.valid.empty:
-        harmonized_valid = harmonize_layout(result.valid, layout)
+    if harmonize:
+        harmonized_valid = (
+            harmonize_layout(result.valid, layout)
+            if not result.valid.empty
+            else result.valid
+        )
+        harmonized_quarantined = (
+            harmonize_layout(result.quarantined, layout, is_quarantine=True)
+            if not result.quarantined.empty
+            else result.quarantined
+        )
         return ValidationResult(
-            valid=harmonized_valid, quarantined=result.quarantined
+            valid=harmonized_valid, quarantined=harmonized_quarantined
         )
 
     return result

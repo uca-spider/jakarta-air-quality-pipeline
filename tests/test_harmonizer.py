@@ -5,7 +5,11 @@ import pandas as pd
 import pytest
 from src.ingestion.models import LayoutType
 from src.ingestion.detector import EXPECTED_LAYOUT_COLUMNS
-from src.ingestion.harmonizer import CANONICAL_COLUMNS, harmonize_layout
+from src.ingestion.harmonizer import (
+    CANONICAL_COLUMNS,
+    QUARANTINE_COLUMNS,
+    harmonize_layout,
+)
 from src.ingestion.dispatcher import dispatch_and_validate
 
 
@@ -89,6 +93,16 @@ def test_all_layouts_produce_exact_same_columns():
         assert list(harmonized.columns) == CANONICAL_COLUMNS
 
 
+def test_harmonize_quarantine_preserves_reason_and_canonical_columns():
+    """Verify that quarantine rows produce QUARANTINE_COLUMNS across all layouts."""
+    for layout in LayoutType:
+        df = _make_dummy_row(layout)
+        df["quarantine_reason"] = "TEST_REASON"
+        harmonized = harmonize_layout(df, layout, is_quarantine=True)
+        assert list(harmonized.columns) == QUARANTINE_COLUMNS
+        assert harmonized.iloc[0]["quarantine_reason"] == "TEST_REASON"
+
+
 def test_dispatch_and_validate_e2e_all_actual_files():
     """End-to-end integration test verifying that all 9 actual files output CANONICAL_COLUMNS."""
     raw_dir = Path("data/raw")
@@ -102,3 +116,5 @@ def test_dispatch_and_validate_e2e_all_actual_files():
         result = dispatch_and_validate(file_path)
         assert len(result.valid) > 0
         assert list(result.valid.columns) == CANONICAL_COLUMNS
+        if len(result.quarantined) > 0:
+            assert list(result.quarantined.columns) == QUARANTINE_COLUMNS
