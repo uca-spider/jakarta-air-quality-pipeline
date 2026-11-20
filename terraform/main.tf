@@ -4,7 +4,11 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "~> 6.0" # check the latest major version before applying
+      version = "~> 6.0"
+    }
+    github = {
+      source  = "integrations/github"
+      version = "~> 6.0"
     }
   }
 }
@@ -12,6 +16,10 @@ terraform {
 provider "google" {
   project = var.project_id
   region  = var.region
+}
+
+provider "github" {
+  owner = "uca-spider"
 }
 
 locals {
