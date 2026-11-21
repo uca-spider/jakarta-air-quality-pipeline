@@ -1,17 +1,20 @@
 # Use official lightweight Python 3.12 slim base image
 FROM python:3.12-slim
 
+# Install system dependencies (git is required by dbt)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends git && \
+    rm -rf /var/lib/apt/lists/*
+
 # Install uv directly from Astral's official image (fast, reproducible, no curl/pip needed)
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 # Python and uv environment variables
-# - PYTHONUNBUFFERED: Ensure log messages are immediately dumped to stream
-# - PYTHONDONTWRITEBYTECODE: Prevent .pyc files generation inside container
-# - UV_SYSTEM_PYTHON: Allow uv to install packages directly into the container's environment
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     UV_SYSTEM_PYTHON=1 \
-    PYTHONPATH="/app"
+    PYTHONPATH="/app" \
+    DBT_PROFILES_DIR="/app/dbt"
 
 WORKDIR /app
 
@@ -27,10 +30,11 @@ RUN useradd -m -u 1000 appuser && \
 
 USER appuser
 
-# 4. Copy configuration, application source code and tests
+# 4. Copy configuration, application source code, tests, and dbt models
 COPY --chown=appuser:appuser pytest.ini .
 COPY --chown=appuser:appuser src/ ./src/
 COPY --chown=appuser:appuser tests/ ./tests/
+COPY --chown=appuser:appuser dbt/ ./dbt/
 
-# Default command: runs the test suite
-CMD ["python", "-m", "pytest", "-v"]
+# Default command: runs the unit test suite
+CMD ["pytest", "-v"]
