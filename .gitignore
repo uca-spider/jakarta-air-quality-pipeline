@@ -17,8 +17,10 @@ venv/
 dbt/target/
 dbt/logs/
 dbt/dbt_packages/
+dbt/.user.yml
 # misc
 *.log
+*.lnk
 # source data must not be committed (license unclear); keep it in Cloud Storage
 data/
 *.csv

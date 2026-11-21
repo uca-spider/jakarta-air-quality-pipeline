@@ -1,0 +1,55 @@
+version: 2
+
+models:
+  - name: dim_stations
+    description: "Dimension table of the 5 DKI Jakarta SPKU air quality monitoring stations."
+    columns:
+      - name: station_id
+        description: "Primary key: DKI1 to DKI5."
+        tests:
+          - unique
+          - not_null
+
+      - name: station_name
+        description: "Official station landmark name."
+        tests:
+          - not_null
+
+  - name: fct_ispu_daily
+    description: >
+      Fact table containing daily ISPU readings per station.
+      Partitioned monthly on measurement_date, clustered on station_id and category.
+    columns:
+      - name: ispu_id
+        description: "Primary key of daily reading."
+        tests:
+          - unique
+          - not_null
+
+      - name: measurement_date
+        description: "Measurement observation date."
+        tests:
+          - not_null
+
+      - name: station_id
+        description: "Foreign key to dim_stations."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_stations')
+                field: station_id
+
+  - name: fct_ispu_monthly_trends
+    description: "Monthly aggregation of air quality metrics and unhealthy days per station."
+    columns:
+      - name: monthly_trend_id
+        description: "Primary key: station_id_year_month."
+        tests:
+          - unique
+          - not_null
+
+      - name: station_id
+        description: "Station code."
+        tests:
+          - not_null

@@ -1,0 +1,43 @@
+version: 2
+
+sources:
+  - name: aq_raw
+    description: "Raw ISPU data ingested from Jakarta open data portal HTML tables."
+    database: "{{ env_var('GCP_PROJECT', 'jakarta-air-quality') }}"
+    schema: aq_raw
+    tables:
+      - name: ispu
+        description: "Harmonized valid ISPU readings across all 6 layout types (2016-2025)."
+        columns:
+          - name: periode_data
+            description: "Data period string (e.g. 2017-01)"
+          - name: tanggal
+            description: "Measurement date (raw string, formatted to YYYY-MM-DD)"
+          - name: stasiun
+            description: "SPKU station name/code (raw string, e.g. DKI1 (BUNDERAN HI))"
+          - name: pm10
+            description: "PM10 reading"
+          - name: pm25
+            description: "PM2.5 reading (empty string for layouts without PM2.5)"
+          - name: so2
+            description: "SO2 reading"
+          - name: co
+            description: "CO reading"
+          - name: o3
+            description: "O3 reading"
+          - name: no2
+            description: "NO2 reading"
+          - name: max
+            description: "Maximum ISPU value among pollutants"
+          - name: critical
+            description: "Critical pollutant name"
+          - name: kategori
+            description: "Air quality category (BAIK, SEDANG, TIDAK SEHAT, etc.)"
+          - name: source_file
+            description: "Original filename ingested"
+          - name: file_hash
+            description: "MD5 checksum of source file"
+          - name: loaded_at
+            description: "UTC timestamp when file was ingested"
+      - name: ispu_quarantine
+        description: "Quarantined ISPU rows that failed validation rules, with reason codes."

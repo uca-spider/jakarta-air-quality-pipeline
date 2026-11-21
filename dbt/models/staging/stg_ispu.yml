@@ -1,0 +1,33 @@
+version: 2
+
+models:
+  - name: stg_ispu
+    description: >
+      Staging model for Jakarta ISPU air quality index measurements.
+      Grain: One row per station (station_id) per calendar day (measurement_date).
+      Deduplicated and standardized across all 6 raw layout types.
+    columns:
+      - name: ispu_id
+        description: "Primary key: MD5 hash of measurement_date and station_id."
+        tests:
+          - unique
+          - not_null
+
+      - name: measurement_date
+        description: "Observation date."
+        tests:
+          - not_null
+
+      - name: station_id
+        description: "Standardized SPKU monitoring station code (DKI1 to DKI5)."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['DKI1', 'DKI2', 'DKI3', 'DKI4', 'DKI5']
+
+      - name: max_ispu
+        description: "Maximum ISPU value recorded among all monitored pollutants."
+
+      - name: category
+        description: "Air quality category (BAIK, SEDANG, TIDAK SEHAT, etc.)."
