@@ -2,7 +2,7 @@
 
 An end-to-end, production-grade ELT data pipeline that ingests, validates, harmonizes, and transforms heterogeneous ISPU (Air Pollution Standard Index / *Indeks Standar Pencemar Udara*) data published by the Jakarta Open Data Portal into clean, tested, and analytics-ready datasets in Google Cloud BigQuery.
 
-The source datasets (2016–2025) span multiple layout variations, legacy HTML tables masked as `.xls`, disparate date formats, shifting station names, and data anomalies. This project demonstrates enterprise Data Engineering best practices: **strict schema auto-detection, schema harmonization, quarantine isolation (zero silent drops), automated infrastructure via Terraform, and SQL modeling with dbt**.
+The source datasets (2016–2025) span multiple layout variations, legacy HTML tables masked as `.xls`, disparate date formats, shifting station names, and data anomalies. This project demonstrates enterprise Data Engineering best practices: **strict schema auto-detection, schema harmonization, quarantine isolation (zero silent drops), automated infrastructure via Terraform, containerization with Docker & Docker Compose, and SQL modeling with dbt**.
 
 ---
 
@@ -13,7 +13,12 @@ The source datasets (2016–2025) span multiple layout variations, legacy HTML t
 - **Raw Layer Ingestion (BigQuery):** 9 files loaded successfully:
   - `aq_raw.ispu`: **14,770 valid rows**
   - `aq_raw.ispu_quarantine`: **401 quarantined rows**
-- **Current Active Milestone:** dbt Modeling (`aq_staging` and `aq_marts`).
+- **dbt Transformation Layer:** Completed & tested (16/16 tests passing in 9 seconds):
+  - `aq_staging.stg_ispu` (View): Cleaned, cast, station standardized (`DKI1`–`DKI5`), deduplicated.
+  - `aq_marts.dim_stations` (Table): 5 SPKU stations with coordinates & administrative areas.
+  - `aq_marts.fct_ispu_daily` (Table): Partitioned monthly on `measurement_date`, clustered on `station_id` and `category`.
+  - `aq_marts.fct_ispu_monthly_trends` (Table): Monthly aggregations and unhealthy day percentages.
+- **Containerization:** Fully packaged with Docker and Docker Compose.
 
 ---
 
@@ -37,15 +42,16 @@ Jakarta Open Data Portal (ISPU 2016-2025: HTML-in-XLS files)
 │ GOOGLE CLOUD STORAGE & BIGQUERY (Provisioned by Terraform)      │
 │  ├── Cloud Storage : `hudza-aq-raw` (Bronze landing bucket)     │
 │  ├── `aq_raw`      : `ispu` (14.7k rows) & `ispu_quarantine`   │
-│  ├── `aq_staging`  : Cleaned, cast, deduplicated (dbt)          │
-│  └── `aq_marts`    : Station facts, daily metrics, trends (dbt) │
+│  ├── `aq_staging`  : `stg_ispu` (clean views via dbt)           │
+│  └── `aq_marts`    : `dim_stations`, `fct_ispu_daily` (dbt)     │
 └─────────────────────────────────────────────────────────────────┘
                         │
                         ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ ORCHESTRATION & CI/CD                                           │
-│  ├── GitHub Actions : Automated test suite & scheduled loading  │
-│  └── Keyless Auth   : GCP Workload Identity Federation (WIF)    │
+│ CONTAINERIZATION & ORCHESTRATION                                │
+│  ├── Docker / Compose : Reproducible local execution            │
+│  ├── GitHub Actions   : Automated CI/CD test suite              │
+│  └── Keyless Auth     : GCP Workload Identity Federation (WIF)  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -93,40 +99,47 @@ Every row is validated against strict domain and calendar rules. Invalid rows ar
 
 ---
 
-## Local Setup & Quickstart
+## Quickstart & Execution
 
-### Prerequisites
-- Python 3.12+ (managed with [Astral `uv`](https://github.com/astral-sh/uv))
-- Google Cloud SDK (`gcloud`) or a service account key
-- Terraform 1.6+
+### Option A: Via Docker Compose (Recommended)
 
-### 1. Installation
+Docker Compose provides convenient shortcuts without needing to install Python or dbt locally:
+
 ```bash
-# Clone the repository
-git clone https://github.com/uca-spider/jakarta-air-quality-pipeline.git
-cd jakarta-air-quality-pipeline
+# Run unit & integration test suite (78 tests)
+docker compose run --rm test
 
-# Create virtual environment and install dependencies
+# Ingest all raw data into BigQuery
+docker compose run --rm ingest
+
+# Run dbt transformations (Staging views + Marts tables)
+docker compose run --rm dbt-run
+
+# Run dbt automated data quality tests (16 tests)
+docker compose run --rm dbt-test
+
+# Run full end-to-end pipeline (Ingest -> dbt run -> dbt test)
+docker compose run --rm pipeline
+```
+
+### Option B: Local CLI Execution (with Astral `uv`)
+
+```bash
+# Virtual environment setup
 uv venv
 uv pip install -r requirements.txt
-```
 
-### 2. Run Tests
-```bash
+# Run pytest
 uv run pytest -v
-```
 
-### 3. CLI Ingestion Runner
-```bash
-# Dry-run validation of a single file
-uv run python -m src.ingestion.cli --file data/raw/ISPU_2017.xls
-
-# Dry-run validation of an entire directory
-uv run python -m src.ingestion.cli --dir data/raw/
-
-# Validate and load directly into BigQuery
+# Run Ingestion CLI
 export GOOGLE_APPLICATION_CREDENTIALS="/path/to/key.json"
 uv run python -m src.ingestion.cli --dir data/raw/ --load --project jakarta-air-quality
+
+# Run dbt
+cd dbt
+uv run dbt run --profiles-dir .
+uv run dbt test --profiles-dir .
 ```
 
 ---
@@ -161,7 +174,8 @@ Resources managed:
 - [x] **Idempotent Ingestion:** MD5 file-hash deduplication and BigQuery loader
 - [x] **CLI Runner:** Terminal interface supporting dry-run and Cloud loading
 - [x] **Cloud Ingestion Verification:** 14,770 valid & 401 quarantined rows loaded to BigQuery
-- [ ] **dbt Staging Models:** Type-casting, station ID extraction (`DKI1`–`DKI5`), and NULL handling
-- [ ] **dbt Marts Models:** Daily air quality metrics, station trends, and fact tables
-- [ ] **dbt Data Quality Tests:** Schema assertions, uniqueness, accepted values, and recency
-- [ ] **Automated Orchestration:** GitHub Actions workflow with WIF for weekly ingestion and dbt runs
+- [x] **dbt Staging Models:** Type-casting, station ID extraction (`DKI1`–`DKI5`), and NULL handling
+- [x] **dbt Marts Models:** Daily air quality metrics, station dimensions, and monthly trends
+- [x] **dbt Data Quality Tests:** 16 automated tests covering uniqueness, not-null, and referential integrity
+- [x] **Containerization:** Dockerfile and Docker Compose shortcuts (`test`, `ingest`, `dbt-run`, `dbt-test`, `pipeline`)
+- [ ] **Automated Orchestration:** GitHub Actions workflow with WIF for scheduled weekly ingestion and dbt runs

@@ -1,0 +1,46 @@
+services:
+  # Base service template containing shared configurations
+  base: &base
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: jakarta-aq-pipeline:latest
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/aq-key.json
+      - GCP_PROJECT=${GCP_PROJECT:-jakarta-air-quality}
+      - DBT_PROFILES_DIR=/app/dbt
+    volumes:
+      # Mount GCP credentials and local raw data read-only
+      - ${GCP_KEY_PATH:-${GOOGLE_APPLICATION_CREDENTIALS:-/mnt/c/Users/DELL/gcp-keys/aq-key.json}}:/app/credentials/aq-key.json:ro
+      - ./data:/app/data:ro
+
+  # 1. Run Python unit & integration test suite (78 tests)
+  test:
+    <<: *base
+    command: ["pytest", "-v"]
+
+  # 2. Run CLI Ingestion into BigQuery (aq_raw.ispu & aq_raw.ispu_quarantine)
+  ingest:
+    <<: *base
+    command: ["python", "-m", "src.ingestion.cli", "--dir", "data/raw/", "--load", "--project", "${GCP_PROJECT:-jakarta-air-quality}"]
+
+  # 3. Execute dbt models (Staging views + Marts partitioned tables)
+  dbt-run:
+    <<: *base
+    working_dir: /app/dbt
+    command: ["dbt", "run"]
+
+  # 4. Run dbt automated data quality tests (16 tests)
+  dbt-test:
+    <<: *base
+    working_dir: /app/dbt
+    command: ["dbt", "test"]
+
+  # 5. Full Pipeline end-to-end (Ingest raw -> dbt run -> dbt test)
+  pipeline:
+    <<: *base
+    command: >
+      sh -c "python -m src.ingestion.cli --dir data/raw/ --load --project ${GCP_PROJECT:-jakarta-air-quality} &&
+             cd /app/dbt &&
+             dbt run &&
+             dbt test"
