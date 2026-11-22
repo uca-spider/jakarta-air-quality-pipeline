@@ -180,3 +180,59 @@ def test_main_load_without_project_prints_error(capsys, tmp_path, monkeypatch):
 
     captured = capsys.readouterr()
     assert "--project" in captured.err or "--project" in captured.out
+
+
+# ---------------------------------------------------------------------------
+# Test: failures are reported (exit code / return values)
+# ---------------------------------------------------------------------------
+
+def test_process_file_returns_true_on_success(tmp_path):
+    f = tmp_path / "ok.xls"
+    f.write_text("<table></table>")
+    mock_result = _make_result(LayoutType.LAYOUT_A, n_valid=3, n_quarantine=0)
+    with patch("src.ingestion.cli.dispatch_and_validate", return_value=mock_result):
+        assert process_file(f) is True
+
+
+def test_process_file_returns_false_when_bigquery_load_fails(capsys, tmp_path):
+    f = tmp_path / "bad.xls"
+    f.write_text("<table></table>")
+    mock_result = _make_result(LayoutType.LAYOUT_A, n_valid=3, n_quarantine=0)
+    with patch("src.ingestion.cli.dispatch_and_validate", return_value=mock_result), \
+         patch("src.ingestion.cli.load_to_bigquery", side_effect=RuntimeError("no credentials")):
+        assert process_file(f, load=True, project="p") is False
+
+
+def test_process_file_returns_false_when_gcs_upload_fails(tmp_path):
+    f = tmp_path / "bad.xls"
+    f.write_text("<table></table>")
+    mock_result = _make_result(LayoutType.LAYOUT_A, n_valid=3, n_quarantine=0)
+    with patch("src.ingestion.cli.dispatch_and_validate", return_value=mock_result), \
+         patch("src.ingestion.cli.upload_file_to_gcs", side_effect=RuntimeError("denied")), \
+         patch("src.ingestion.cli.load_to_bigquery"):
+        assert process_file(f, load=True, project="p", bucket="b") is False
+
+
+def test_process_file_returns_false_when_file_missing(tmp_path):
+    assert process_file(tmp_path / "missing.xls") is False
+
+
+def test_process_dir_reports_failed_count(capsys, tmp_path):
+    (tmp_path / "a.xls").write_text("<table></table>")
+    (tmp_path / "b.xls").write_text("<table></table>")
+    mock_result = _make_result(LayoutType.LAYOUT_A, n_valid=3, n_quarantine=0)
+    with patch("src.ingestion.cli.dispatch_and_validate", return_value=mock_result), \
+         patch("src.ingestion.cli.load_to_bigquery", side_effect=RuntimeError("boom")):
+        failed = process_dir(tmp_path, load=True, project="p")
+    assert failed == 2
+    assert "2 failed" in capsys.readouterr().out
+
+
+def test_main_exits_one_when_any_file_fails(tmp_path):
+    (tmp_path / "a.xls").write_text("<table></table>")
+    mock_result = _make_result(LayoutType.LAYOUT_A, n_valid=3, n_quarantine=0)
+    with patch("src.ingestion.cli.dispatch_and_validate", return_value=mock_result), \
+         patch("src.ingestion.cli.load_to_bigquery", side_effect=RuntimeError("boom")):
+        with pytest.raises(SystemExit) as exc:
+            main(["--dir", str(tmp_path), "--load", "--project", "p"])
+    assert exc.value.code == 1

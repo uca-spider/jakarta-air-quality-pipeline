@@ -7,7 +7,7 @@
 [![Terraform](https://img.shields.io/badge/Terraform-1.10-purple.svg)](https://www.terraform.io/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg)](https://www.docker.com/)
 
-An end-to-end, production-grade **ELT Data Engineering Pipeline** that ingests, validates, harmonizes, and transforms 10 years of heterogeneous ISPU (*Indeks Standar Pencemar Udara* / Air Pollution Standard Index) data from the Jakarta Open Data Portal into an analytics-ready Medallion Lakehouse on **Google Cloud Platform (GCS & BigQuery)** using **dbt**, **Terraform**, and **Docker**.
+A portfolio **ELT data engineering pipeline** that ingests, validates, harmonizes, and transforms 10 years of heterogeneous ISPU (*Indeks Standar Pencemar Udara* / Air Pollution Standard Index) data from the Jakarta Open Data Portal into an analytics-ready BigQuery warehouse (raw, staging and marts layers) on **Google Cloud Platform (GCS & BigQuery)** using **dbt**, **Terraform**, and **Docker**.
 
 ---
 
@@ -24,7 +24,7 @@ This pipeline implements an enterprise **Medallion Architecture**:
 1. **Bronze (Immutable Lake & Raw Data):** Raw files are archived unchanged in Google Cloud Storage (`gs://hudza-aq-raw/raw/`). The ingestion engine validates every row, routes defective records into an isolated **Quarantine Table** (preserving 100% auditability with zero silent drops), and loads clean data idempotently into BigQuery using MD5 file-hash identity.
 2. **Silver (Cleaned & Standardized Staging):** Modeled in dbt as a high-performance view that parses data types, converts missing string tokens to SQL `NULL`, standardizes SPKU station identifiers (`DKI1`–`DKI5`), and deduplicates grain collisions.
 3. **Gold (Analytical Data Marts):** Dimensional modeling with a station dimension (`dim_stations`), a daily fact table partitioned monthly and clustered (`fct_ispu_daily`), and pre-aggregated monthly trend metrics (`fct_ispu_monthly_trends`).
-4. **Reliability & Automation:** Enforced by **142 Python unit & integration tests (100% TDD)**, **17 dbt schema & referential integrity tests**, keyless Workload Identity Federation (WIF), and reproducible containerization with Docker Compose.
+4. **Reliability & Automation:** Enforced by **148 Python unit & integration tests** (142 run in CI; 6 read the raw files, which are not in the repository), **17 dbt schema & referential integrity tests**, keyless Workload Identity Federation (WIF) for CI, and reproducible containerization with Docker Compose.
 
 ---
 
@@ -105,7 +105,7 @@ Zero data loss policy: **100% of rows are accounted for**. Invalid records are n
 | **2019** (`ispu-2019.xls`) | Layout B (No PM2.5) | 345 | 345 | 0 | *Clean daily provincial summary table* |
 | **2020** (`ispu-2020.xls`) | Layout A | 1,830 | 1,499 | 331 | `INVALID_STATION_CODE` (155, shifted columns in March) + `DUPLICATE_DATE_STATION_IN_FILE` (121, all stuck on `2020-06-06`) + `DATE_PERIOD_MISMATCH` (55) |
 | **2021** (`ispu-2021.xls`) | Layout A + PM2.5 | 1,825 | 1,824 | 1 | `NON_NUMERIC_MAX_VALUE` (corrupted token `'PM25'` in max column) |
-| **2022** (`ispu-2022.xls`) | Layout B | 365 | 336 | 29 | `INVALID_STATION_CODE` (station code `'0'`) + 28 duplicate rows from Feb 2020 |
+| **2022** (`ispu-2022.xls`) | Layout B | 365 | 336 | 29 | `INVALID_STATION_CODE` (1, station code `'0'`) + `DATE_PERIOD_MISMATCH` (28, rows dated Feb 2020 inside the 2022 file) |
 | **2023** (`ispu-2023.xls`) | Layout C | 1,825 | 1,825 | 0 | *Clean (Indonesian headers translated to canonical)* |
 | **2024–2025** (`ispu-komponen.xls`) | Layout C (Bulan) | 3,501 | 3,500 | 1 | `INVALID_DATE_FORMAT` (impossible calendar date: September 31st) |
 | **TOTAL** | | **15,171** | **14,616** | **555** | **100% accounted for, 0 silent drops** |
@@ -120,7 +120,7 @@ The raw ingestion harmonizer ensures that all 6 layouts conform to a uniform 12-
 
 ### 2. Staging Layer (`aq_staging.stg_ispu`)
 - **Primary Surrogate Key:** `MD5(CONCAT(measurement_date, '_', station_id))`
-- **Deduplication:** Applied window function `ROW_NUMBER() OVER (PARTITION BY measurement_date, station_id ORDER BY ingested_at DESC, source_file DESC) = 1`. Rows dropped by this dedup are not lost: they are surfaced in `stg_ispu_rejects` as `OVERLAP_ACROSS_FILES`, and `assert_staging_reconciles` guarantees `count(raw) = count(stg_ispu) + count(stg_ispu_rejects)`.
+- **Deduplication:** Applied window function `ROW_NUMBER() OVER (PARTITION BY measurement_date, station_id ORDER BY <file published for the same year as the date first>, ingested_at DESC, source_file DESC) = 1`. Duplicates inside one file never reach this step (they are quarantined at ingestion), so it only resolves overlaps *between* files. The only overlap in the data is December 2022, present in both the 2022 and 2023 files (30 of 31 station-days differ), where the 2022 file wins. Rows dropped by this dedup are not lost: they are surfaced in `stg_ispu_rejects` as `OVERLAP_ACROSS_FILES`, and `assert_staging_reconciles` guarantees `count(raw) = count(stg_ispu) + count(stg_ispu_rejects)`.
 - **Station Normalization:** Maps raw station variations (`DKI1 (Bunderan HI)`, `DKI1`, etc.) to strict keys: `DKI1`, `DKI2`, `DKI3`, `DKI4`, `DKI5`.
 - **Type Coercion:** Safely converts string tokens (`'---'`, `'N/A'`, empty strings) to SQL `NULL` and casts pollutant columns to `INT64`.
 
@@ -146,9 +146,9 @@ The raw ingestion harmonizer ensures that all 6 layouts conform to a uniform 12-
 The project enforces quality at both the Python application layer and the SQL transformation layer:
 
 ```
-Automated Test Suite: 159 / 159 Passing
-├── Python Tests (pytest)            : 142 passed
-│   ├── Ingestion & Pipeline         : 100 passed
+Automated Test Suite: 165 / 165 passing locally
+├── Python Tests (pytest)            : 148 passed
+│   ├── Ingestion & Pipeline         : 106 passed
 │   │   ├── Layout Detector          : 11 (header fingerprinting, synthetic + real samples)
 │   │   ├── Layout Dispatcher        :  4 (routing and invalid-format traps)
 │   │   ├── Layout Validators        : 30 (Layout A/B/C, PM2.5, 2017 & 2021 edge cases)
@@ -157,7 +157,7 @@ Automated Test Suite: 159 / 159 Passing
 │   │   ├── BigQuery Loader          :  7 (MD5 idempotency, NotFound handling)
 │   │   ├── GCS Storage Backup       :  2 (upload, metadata, mock client)
 │   │   ├── GCS Discovery Runner     : 11 (new-file scan, exit codes, mocked clients)
-│   │   ├── Ingestion CLI            : 10 (flags, dry-run, load orchestration)
+│   │   ├── Ingestion CLI            : 16 (flags, dry-run, load orchestration, failure exit codes)
 │   │   └── Readers, Models & E2E    :  8 (2017 reader + end-to-end, models, smoke)
 │   └── REST API (FastAPI)           :  42 passed
 │       ├── Repositories             : 16 (sample + live BigQuery: measurements/trends/quality)
@@ -172,11 +172,13 @@ Automated Test Suite: 159 / 159 Passing
     └── `fct_ispu_monthly_trends`    : unique station-month grain, positive value constraints
 ```
 
+CI runs the pytest suite and the Terraform format/validate checks. The 6 pytest tests that read the raw files are skipped there, and the dbt tests run against BigQuery on demand.
+
 ---
 
 ## Infrastructure as Code (Terraform)
 
-All cloud resources are provisioned via Terraform with zero manual console configuration:
+The cloud resources are declared in Terraform:
 
 ```bash
 cd terraform
@@ -203,7 +205,7 @@ terraform apply
 ### Option A: Using Docker Compose (Zero local environment dependencies)
 
 ```bash
-# 1. Run the entire Python test suite (142 tests)
+# 1. Run the entire Python test suite (148 tests)
 docker compose run --rm test
 
 # 2. Ingest raw data to GCS Bucket & BigQuery
@@ -229,7 +231,7 @@ uv pip install -r requirements.txt
 # 2. Run unit & integration tests
 uv run pytest -v
 
-# 3. Authenticate to Google Cloud
+# 3. Authenticate to Google Cloud (local: a service-account key kept outside the repo; CI: keyless WIF)
 export GOOGLE_APPLICATION_CREDENTIALS="/path/to/key.json"
 
 # 4. Ingest raw data: backup to GCS and load to BigQuery
@@ -254,7 +256,7 @@ jakarta-air-quality-pipeline/
 ├── .github/
 │   └── workflows/
 │       ├── ci.yml                 # Automated CI: pytest + Terraform format/validate
-│       └── check_new_files.yml    # Weekly automated ingestion & dbt orchestration (WIF)
+│       └── check_new_files.yml    # Weekly check for new files and load (does not run dbt)
 ├── data/
 │   └── raw/                       # Raw HTML-in-XLS files (git-ignored)
 ├── dbt/
@@ -298,7 +300,7 @@ jakarta-air-quality-pipeline/
 │   ├── github.tf                  # GitHub provider & action variables integration
 │   ├── variables.tf               # Terraform input variable definitions
 │   └── outputs.tf                 # Output endpoints and IDs
-├── tests/                         # Pytest test suite (142 unit & integration tests)
+├── tests/                         # Pytest test suite (148 unit & integration tests)
 ├── docker-compose.yml             # Local pipeline orchestration shortcuts
 ├── Dockerfile                     # Multi-stage container definition
 ├── pytest.ini                     # Pytest runner configuration
@@ -321,7 +323,7 @@ jakarta-air-quality-pipeline/
 - [x] **CLI Runner:** Configurable ingestion runner supporting local dry-run, GCS, and BigQuery.
 - [x] **dbt Staging Models:** Data type casting, station code harmonization, and window deduplication.
 - [x] **dbt Marts Models:** Designed `dim_stations`, partitioned `fct_ispu_daily`, and `fct_ispu_monthly_trends`.
-- [x] **Automated Data Quality Testing:** 159 tests passing across Python unit tests and dbt constraints.
+- [x] **Automated Data Quality Testing:** 165 tests passing locally across Python unit tests and dbt constraints.
 - [x] **Containerization:** Production Docker image and multi-service Docker Compose workflow.
 - [x] **Keyless CI/CD:** GitHub Actions workflow with Google Cloud Workload Identity Federation (WIF).
 
@@ -352,8 +354,26 @@ uv run uvicorn src.api.main:app --reload
 
 **Dashboards:** Looker Studio connects directly to the BigQuery marts via its native connector, not through this API. See [`src/api/README.md`](src/api/README.md) for full configuration.
 
+## Known Limitations
+
+- **Source defect (repeated dates):** some rows repeat a date whose day equals its month
+  (2016-10-10, 2016-11-11, 2016-12-12, 2020-06-06) with conflicting values. The true date
+  cannot be recovered, so these 154 rows are quarantined (`DUPLICATE_DATE_STATION_IN_FILE`), not repaired.
+- **2019 and 2022 grain:** these files hold one row per day (the station with the highest
+  index), not five. Per-station monthly trends for those years describe only the days a
+  station was the worst; do not compare them with other years.
+- **Overlap in December 2022:** present in the 2022 and 2023 files, and 30 of 31 station-days
+  differ. The file published for the same year wins; the other rows stay in
+  `stg_ispu_rejects` (`OVERLAP_ACROSS_FILES`). This is a modelling choice, not a verified truth.
+- **Loads are not atomic:** each file is deleted by hash and re-inserted. A failed load is
+  repaired by running it again.
+- **Scheduling:** the weekly workflow only discovers and loads new files; dbt is run manually.
+- **Authentication:** local runs use a service-account key kept outside the repository;
+  GitHub Actions uses keyless Workload Identity Federation.
+- **Data licence:** not verified (see License).
+
 ---
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details. Raw air quality data is sourced from the [Jakarta Open Data Portal](https://data.jakarta.go.id/) under open government data terms.
+This project is licensed under the MIT License - see the LICENSE file for details. Raw air quality data is sourced from the [Jakarta Open Data Portal](https://data.jakarta.go.id/). Its licence has not been verified, so the raw files are not redistributed in this repository.

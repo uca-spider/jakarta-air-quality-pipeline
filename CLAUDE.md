@@ -1,6 +1,6 @@
 # Jakarta Air Quality Pipeline — Agent Guidelines
 
-An end-to-end, production-grade ELT data pipeline that ingests, validates, harmonizes, and transforms heterogeneous Jakarta ISPU (Air Pollution Standard Index / *Indeks Standar Pencemar Udara*) data (2016–2025) into Google Cloud Storage and BigQuery, followed by dbt transformations, containerization, and analytical marts.
+An end-to-end ELT data pipeline that ingests, validates, harmonizes, and transforms heterogeneous Jakarta ISPU (Air Pollution Standard Index / *Indeks Standar Pencemar Udara*) data (2016–2025) into Google Cloud Storage and BigQuery, followed by dbt transformations, containerization, and analytical marts.
 
 ---
 
@@ -31,7 +31,7 @@ An end-to-end, production-grade ELT data pipeline that ingests, validates, harmo
 
 ### 2. Silver Layer (Staging)
 - **BigQuery Dataset:** `aq_staging`
-  - `aq_staging.stg_ispu` (View): Cleansed, types cast (`INT64`, `DATE`), station IDs normalized to `DKI1`–`DKI5`, missing tokens mapped to `NULL`, deduplicated with `QUALIFY ROW_NUMBER() OVER (PARTITION BY measurement_date, station_id ORDER BY ingested_at DESC, source_file DESC) = 1`.
+  - `aq_staging.stg_ispu` (View): Cleansed, types cast (`INT64`, `DATE`), station IDs normalized to `DKI1`–`DKI5`, missing tokens mapped to `NULL`, deduplicated across files with `QUALIFY ROW_NUMBER() OVER (PARTITION BY measurement_date, station_id ORDER BY <file whose year equals the date's year first>, ingested_at DESC, source_file DESC) = 1` (only December 2022 overlaps; the 2022 file wins).
   - `aq_staging.stg_ispu_rejects` (View): Every raw row that does NOT reach `stg_ispu`, with a `reject_reason` (`UNPARSEABLE_DATE`, `UNKNOWN_STATION`, `OVERLAP_ACROSS_FILES`). Makes the staging dedup explicit instead of a silent drop. The invariant `count(aq_raw.ispu) = count(stg_ispu) + count(stg_ispu_rejects)` is enforced by the dbt test `assert_staging_reconciles`.
 
 ### 3. Gold Layer (Analytics Marts)
@@ -45,7 +45,7 @@ An end-to-end, production-grade ELT data pipeline that ingests, validates, harmo
 ## Key Commands & Workflow
 
 ```bash
-# Run Python Unit & Integration Tests (142 tests)
+# Run Python Unit & Integration Tests (148 tests)
 uv run pytest -v
 
 # Run Ingestion CLI (Dry-run or Load to GCS + BigQuery)

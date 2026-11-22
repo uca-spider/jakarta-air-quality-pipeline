@@ -32,20 +32,24 @@ def process_file(
     load: bool = False,
     project: str | None = None,
     bucket: str | None = None,
-) -> None:
-    """Process a single file, print summary, and optionally load into BigQuery and GCS."""
+) -> bool:
+    """Process a single file, print summary, and optionally load into BigQuery and GCS.
+
+    Returns True when every requested step succeeded, False otherwise.
+    """
+    ok = True
     if not path.exists():
         print(f"[ERROR] File not found: {path.name}")
-        return
+        return False
 
     try:
         result = dispatch_and_validate(path)
     except LayoutMismatchError as exc:
         print(f"[ERROR] Layout mismatch in {path.name}: {exc}")
-        return
+        return False
     except Exception as exc:
         print(f"[ERROR] Failed to process {path.name}: {exc}")
-        return
+        return False
 
     n_valid = len(result.valid)
     n_quarantine = len(result.quarantined)
@@ -59,7 +63,7 @@ def process_file(
         if not project:
             print(f"[ERROR] BigQuery loading requested for {path.name}, but project is not specified.")
             _print_separator()
-            return
+            return False
 
         # 1. Upload original raw file to GCS landing zone (Bronze backup)
         if bucket:
@@ -68,6 +72,7 @@ def process_file(
                 print(f" [GCS] Uploaded raw file to {gcs_uri}")
             except Exception as exc:
                 print(f"[WARNING] Failed to upload {path.name} to GCS: {exc}")
+                ok = False
 
         # 2. Upload structured valid and quarantined rows into BigQuery
         try:
@@ -77,8 +82,10 @@ def process_file(
                 print(f" [BigQuery] Loaded {n_quarantine} rows to aq_raw.ispu_quarantine")
         except Exception as exc:
             print(f"[ERROR] BigQuery load failed for {path.name}: {exc}")
+            ok = False
 
     _print_separator()
+    return ok
 
 
 def process_dir(
@@ -86,8 +93,11 @@ def process_dir(
     load: bool = False,
     project: str | None = None,
     bucket: str | None = None,
-) -> None:
-    """Process all supported files in a directory and print a summary per file."""
+) -> int:
+    """Process all supported files in a directory and print a summary per file.
+
+    Returns the number of files that failed (0 when everything succeeded).
+    """
     files = sorted(
         f for f in directory.iterdir()
         if f.is_file() and f.suffix.lower() in _SUPPORTED_EXTENSIONS
@@ -95,19 +105,22 @@ def process_dir(
 
     if not files:
         print(f"[INFO] No supported files found in {directory}")
-        return
+        return 0
 
+    failed = 0
     for f in files:
-        process_file(f, load=load, project=project, bucket=bucket)
+        if not process_file(f, load=load, project=project, bucket=bucket):
+            failed += 1
 
     print(f"\n{'─' * 50}")
     print(f" Directory : {directory}")
-    print(f" Files     : {len(files)} processed")
+    print(f" Files     : {len(files)} processed, {failed} failed")
     if load and project:
         print(f" Target BQ : {project}.aq_raw")
     if load and bucket:
         print(f" Target GCS: gs://{bucket}/raw/")
     print(f"{'─' * 50}")
+    return failed
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -146,9 +159,12 @@ def main(argv: list[str] | None = None) -> None:
     bucket = args.bucket or os.getenv("RAW_BUCKET")
 
     if args.file:
-        process_file(args.file, load=args.load, project=project, bucket=bucket)
+        failed = 0 if process_file(args.file, load=args.load, project=project, bucket=bucket) else 1
     else:
-        process_dir(args.dir, load=args.load, project=project, bucket=bucket)
+        failed = process_dir(args.dir, load=args.load, project=project, bucket=bucket)
+
+    if failed:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

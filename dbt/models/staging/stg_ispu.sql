@@ -58,7 +58,13 @@ final AS (
     -- Deduplication: keep the latest loaded record per (measurement_date, station_id)
     QUALIFY ROW_NUMBER() OVER (
         PARTITION BY measurement_date, station_id 
-        ORDER BY ingested_at DESC, source_file DESC
+        -- Overlap rule: the file published for the same year as the date wins
+        -- (only December 2022 overlaps: 2022 file vs 2023 file). Then newest load.
+        ORDER BY
+            IF(REGEXP_EXTRACT(source_file, r'(20\d{2})')
+                 = CAST(EXTRACT(YEAR FROM measurement_date) AS STRING), 0, 1),
+            ingested_at DESC,
+            source_file DESC
     ) = 1
 )
 
