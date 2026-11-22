@@ -10,6 +10,7 @@ from src.ingestion.validator_2021 import validate_layout_a_pm25
 from src.ingestion.validator_layout_b import validate_layout_b
 from src.ingestion.validator_layout_c import validate_layout_c
 from src.ingestion.harmonizer import harmonize_layout
+from src.ingestion.cross_row import quarantine_duplicate_keys
 
 # Registry of layout validators
 VALIDATOR_REGISTRY: dict[LayoutType, Callable[[pd.DataFrame], ValidationResult]] = {
@@ -48,7 +49,7 @@ def dispatch_and_validate(
             f"Available validators: {[k.value for k in VALIDATOR_REGISTRY.keys()]}"
         )
 
-    result = validator(df)
+    result = quarantine_duplicate_keys(validator(df))
 
     if harmonize:
         harmonized_valid = (

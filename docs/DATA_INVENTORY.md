@@ -1,6 +1,6 @@
 # Data inventory: Jakarta ISPU files
 
-Profiled on 8 Nov 2026 (initial 5 files) and updated on 16 Nov 2026 from nine downloaded files spanning 2016 through 2025. Everything marked **observed** was measured directly on the files. Everything marked **inferred** is a conclusion drawn from the data and must be confirmed against the publisher's documentation. Add more years as they are inspected.
+Profiled on 8 Nov 2026 (initial 5 files), updated on 16 Nov 2026 from nine downloaded files spanning 2016 through 2025, and on 22 Nov 2026 with the cross-row duplicate-key anomaly (see 2016 and 2020 findings). Everything marked **observed** was measured directly on the files. Everything marked **inferred** is a conclusion drawn from the data and must be confirmed against the publisher's documentation. Add more years as they are inspected.
 
 ## Files
 
@@ -49,9 +49,10 @@ Profiled on 8 Nov 2026 (initial 5 files) and updated on 16 Nov 2026 from nine do
 ## Findings per file
 
 ### 2016 (clean, leap year)
-- Exactly 1,830 rows (5 stations x 366 days); 366 distinct days per station; no duplicates (observed).
+- Exactly 1,830 rows (5 stations x 366 days) (observed).
 - 76 rows in late December use `dd/mm/yyyy` format, while the rest use standard ISO `YYYY-MM-DD` (observed).
 - **Period mismatches in 2016 (observed):** 160 rows have a date month that does not match `periode_data`. For September (`201609`), 120 rows (DKI2 to DKI5) have August dates (`2016-08-...`). For December (`201612`), 40 rows (DKI2 to DKI5) have November dates (`2016-11-...`). Successfully caught and routed to quarantine by the validator with `DATE_PERIOD_MISMATCH`.
+- **Day-equals-month duplicate dates (observed; added 22 Nov 2026):** After dates are normalized to ISO, three dates whose day equals the month — `2016-10-10`, `2016-11-11`, `2016-12-12` — recur for the same station with different pollutant values. 33 rows across 14 `(date, station)` groups: `2016-11-11` on all 5 stations (3 rows each), `2016-10-10` on all 5 stations (2 each), `2016-12-12` on DKI2–DKI5 (2 each). The correct row cannot be chosen from the file, so the whole group is quarantined with `DUPLICATE_DATE_STATION_IN_FILE` instead of guessing. (The 1,830 rows still hold 366 nominal days per station; the earlier "no duplicates" note counted raw date strings before normalization, so these collisions were not visible then.)
 - 37 rows have empty `critical` and `max=0` with category `TIDAK ADA DATA` (observed).
 - Missing values in pollutant columns are consistently marked with `---`.
 
@@ -74,7 +75,7 @@ Profiled on 8 Nov 2026 (initial 5 files) and updated on 16 Nov 2026 from nine do
 
 ### 2020 (most damaged)
 - **March: station missing and columns shifted (observed).** All 155 March rows (5 stations x 31 days) have a number in the `stasiun` column. The values are shifted one column to the left: `stasiun` holds the PM10 value, `max` holds a numeric code, and `critical` holds the pollutant name. The station is not recoverable from the row itself.
-- **June: date stuck on one value (observed).** The date `2020-06-06` appears on 121 rows. For DKI2, DKI3 and DKI4 each station has only one distinct date in June, and DKI1 has six. The rows have different values, so they are distinct observations with a wrong date, not duplicates.
+- **June: date stuck on one value (observed).** The date `2020-06-06` appears on 121 rows. For DKI2, DKI3 and DKI4 each station has only one distinct date in June, and DKI1 has six. The rows have different values, so they are distinct observations with a wrong date, not duplicates. All 121 are now quarantined with `DUPLICATE_DATE_STATION_IN_FILE`, because the key `(2020-06-06, station)` repeats with differing values and the real date cannot be recovered (by station: DKI2 30, DKI3 30, DKI4 30, DKI1 25, DKI5 6).
 - **November: three date formats (observed).** 90 rows use `dd/mm/yyyy` (days 13 to 30). The early days are written as year-day-month in ISO form, for example `2020-01-11` for 1 November and `2020-12-11` for 12 November (55 rows are detectably wrong; 5 rows for 11 November look right by coincidence). Read as normal dates, they collide with real dates such as 11 January.
 - **PM2.5 without a column (observed).** `critical` is `PM25` in 271 rows (Sep to Dec), but the file has no PM2.5 column. In 160 of those rows `max` is higher than every listed component, so the index cannot be reproduced from the file.
 - A few rows have all components missing, with `max` of 0 or empty and the category `TIDAK ADA DATA`.
@@ -135,6 +136,7 @@ The ranges match the standard Indonesian ISPU bands (0-50 BAIK, 51-100 SEDANG, 1
 | One parsing rule per layout and year; fail the run on an unknown layout | Column names, date formats, and code meanings all differ |
 | Send the March 2020 rows to quarantine with the reason "station missing, columns shifted" | The station cannot be determined from the row |
 | Send the June 2020 rows with a repeated date to quarantine, with the reason "date not trustworthy" | The date is wrong for most rows |
+| Quarantine every row of a within-file `(date, station)` group that repeats with differing values, using `DUPLICATE_DATE_STATION_IN_FILE` | The real row cannot be determined from the file; keeping one would be guessing. Enforced in code by `src/ingestion/cross_row.py`; covers the 2016 day-equals-month dates and June 2020 |
 | Parse the November 2020 dates by format; treat year-day-month dates as a known defect and quarantine them unless a rule is confirmed | The same text can mean two different dates |
 | Parse 2016 and 2018 dates supporting both ISO (`YYYY-MM-DD`) and slash (`DD/MM/YYYY`) | Late December rows in 2016 and 2018 use slash format |
 | Quarantine row 1762 of 2021 with reason "shifted columns, non-numeric max" | `max` holds `'PM25'` and `critical` holds `'BAIK'` |

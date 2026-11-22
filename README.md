@@ -24,7 +24,7 @@ This pipeline implements an enterprise **Medallion Architecture**:
 1. **Bronze (Immutable Lake & Raw Data):** Raw files are archived unchanged in Google Cloud Storage (`gs://hudza-aq-raw/raw/`). The ingestion engine validates every row, routes defective records into an isolated **Quarantine Table** (preserving 100% auditability with zero silent drops), and loads clean data idempotently into BigQuery using MD5 file-hash identity.
 2. **Silver (Cleaned & Standardized Staging):** Modeled in dbt as a high-performance view that parses data types, converts missing string tokens to SQL `NULL`, standardizes SPKU station identifiers (`DKI1`–`DKI5`), and deduplicates grain collisions.
 3. **Gold (Analytical Data Marts):** Dimensional modeling with a station dimension (`dim_stations`), a daily fact table partitioned monthly and clustered (`fct_ispu_daily`), and pre-aggregated monthly trend metrics (`fct_ispu_monthly_trends`).
-4. **Reliability & Automation:** Enforced by **80 Python unit & integration tests (100% TDD)**, **16 dbt schema & referential integrity tests**, keyless Workload Identity Federation (WIF), and reproducible containerization with Docker Compose.
+4. **Reliability & Automation:** Enforced by **142 Python unit & integration tests (100% TDD)**, **17 dbt schema & referential integrity tests**, keyless Workload Identity Federation (WIF), and reproducible containerization with Docker Compose.
 
 ---
 
@@ -48,9 +48,9 @@ This pipeline implements an enterprise **Medallion Architecture**:
                     ▼                                     ▼
 ┌──────────────────────────────────────┐  ┌───────────────────────────────────┐
 │     BRONZE: GCS DATA LAKE            │  │      BRONZE: BIGQUERY RAW         │
-│  `gs://hudza-aq-raw/raw/*.xls`       │  │  ├── `aq_raw.ispu` (14,770 rows)  │
+│  `gs://hudza-aq-raw/raw/*.xls`       │  │  ├── `aq_raw.ispu` (14,616 rows)  │
 │  (Immutable source-of-truth)         │  │  └── `aq_raw.ispu_quarantine`     │
-│                                      │  │      (401 audit rows)             │
+│                                      │  │      (555 audit rows)             │
 └──────────────────────────────────────┘  └─────────────────┬─────────────────┘
                                                             │
                                                             ▼ (dbt transformations)
@@ -99,16 +99,16 @@ Zero data loss policy: **100% of rows are accounted for**. Invalid records are n
 
 | Source File / Period | Layout Detected | Total Rows | Valid Rows | Quarantined Rows | Dominant Failure Reason Codes |
 |---|---|---:|---:|---:|---|
-| **2016** (`ispu-2016.xls`) | Layout A | 1,830 | 1,670 | 160 | `DATE_PERIOD_MISMATCH` (wrong month metadata in Sept & Dec) |
+| **2016** (`ispu-2016.xls`) | Layout A | 1,830 | 1,637 | 193 | `DATE_PERIOD_MISMATCH` (160, wrong month metadata in Sept & Dec) + `DUPLICATE_DATE_STATION_IN_FILE` (33, day-equals-month dates `2016-10-10`/`11-11`/`12-12` repeat with different values) |
 | **2017** (`ispu-2017.xls`) | Layout A | 1,825 | 1,825 | 0 | *Clean baseline (5 stations × 365 days)* |
 | **2018** (`ispu-2018.xls`) | Layout A | 1,825 | 1,825 | 0 | *Clean (standardized slash dates to ISO)* |
 | **2019** (`ispu-2019.xls`) | Layout B (No PM2.5) | 345 | 345 | 0 | *Clean daily provincial summary table* |
-| **2020** (`ispu-2020.xls`) | Layout A | 1,830 | 1,620 | 210 | `INVALID_STATION_CODE` (shifted columns in March) + `DATE_PERIOD_MISMATCH` |
+| **2020** (`ispu-2020.xls`) | Layout A | 1,830 | 1,499 | 331 | `INVALID_STATION_CODE` (155, shifted columns in March) + `DUPLICATE_DATE_STATION_IN_FILE` (121, all stuck on `2020-06-06`) + `DATE_PERIOD_MISMATCH` (55) |
 | **2021** (`ispu-2021.xls`) | Layout A + PM2.5 | 1,825 | 1,824 | 1 | `NON_NUMERIC_MAX_VALUE` (corrupted token `'PM25'` in max column) |
 | **2022** (`ispu-2022.xls`) | Layout B | 365 | 336 | 29 | `INVALID_STATION_CODE` (station code `'0'`) + 28 duplicate rows from Feb 2020 |
 | **2023** (`ispu-2023.xls`) | Layout C | 1,825 | 1,825 | 0 | *Clean (Indonesian headers translated to canonical)* |
 | **2024–2025** (`ispu-komponen.xls`) | Layout C (Bulan) | 3,501 | 3,500 | 1 | `INVALID_DATE_FORMAT` (impossible calendar date: September 31st) |
-| **TOTAL** | | **15,171** | **14,770** | **401** | **100% accounted for, 0 silent drops** |
+| **TOTAL** | | **15,171** | **14,616** | **555** | **100% accounted for, 0 silent drops** |
 
 ---
 
@@ -120,7 +120,7 @@ The raw ingestion harmonizer ensures that all 6 layouts conform to a uniform 12-
 
 ### 2. Staging Layer (`aq_staging.stg_ispu`)
 - **Primary Surrogate Key:** `MD5(CONCAT(measurement_date, '_', station_id))`
-- **Deduplication:** Applied window function `ROW_NUMBER() OVER (PARTITION BY measurement_date, station_id ORDER BY ingested_at DESC) = 1`.
+- **Deduplication:** Applied window function `ROW_NUMBER() OVER (PARTITION BY measurement_date, station_id ORDER BY ingested_at DESC, source_file DESC) = 1`. Rows dropped by this dedup are not lost: they are surfaced in `stg_ispu_rejects` as `OVERLAP_ACROSS_FILES`, and `assert_staging_reconciles` guarantees `count(raw) = count(stg_ispu) + count(stg_ispu_rejects)`.
 - **Station Normalization:** Maps raw station variations (`DKI1 (Bunderan HI)`, `DKI1`, etc.) to strict keys: `DKI1`, `DKI2`, `DKI3`, `DKI4`, `DKI5`.
 - **Type Coercion:** Safely converts string tokens (`'---'`, `'N/A'`, empty strings) to SQL `NULL` and casts pollutant columns to `INT64`.
 
@@ -146,21 +146,30 @@ The raw ingestion harmonizer ensures that all 6 layouts conform to a uniform 12-
 The project enforces quality at both the Python application layer and the SQL transformation layer:
 
 ```
-Automated Test Suite: 96 / 96 Passing
-├── Python Ingestion Tests (pytest) : 80 passed in 1.45s
-│   ├── Layout Detector Tests      : 10 passed (synthetic fixtures + real samples)
-│   ├── Layout Dispatcher Tests    : 4 passed (routing and invalid format traps)
-│   ├── Schema Harmonizer Tests    : 8 passed (canonical 12-column compliance)
-│   ├── Layout Validators Tests    : 34 passed (Layout A, B, C, date parsing, quarantine)
-│   ├── GCS Storage Backup Tests   : 4 passed (upload, metadata, mock client)
-│   ├── BigQuery Loader Tests      : 11 passed (MD5 idempotency, NotFound handling)
-│   └── Ingestion CLI Tests        : 9 passed (flags, dry-run, load orchestration)
+Automated Test Suite: 159 / 159 Passing
+├── Python Tests (pytest)            : 142 passed
+│   ├── Ingestion & Pipeline         : 100 passed
+│   │   ├── Layout Detector          : 11 (header fingerprinting, synthetic + real samples)
+│   │   ├── Layout Dispatcher        :  4 (routing and invalid-format traps)
+│   │   ├── Layout Validators        : 30 (Layout A/B/C, PM2.5, 2017 & 2021 edge cases)
+│   │   ├── Cross-Row Dedup Rule     :  8 (DUPLICATE_DATE_STATION_IN_FILE, whole-group quarantine)
+│   │   ├── Schema Harmonizer        :  9 (canonical 12-column compliance)
+│   │   ├── BigQuery Loader          :  7 (MD5 idempotency, NotFound handling)
+│   │   ├── GCS Storage Backup       :  2 (upload, metadata, mock client)
+│   │   ├── GCS Discovery Runner     : 11 (new-file scan, exit codes, mocked clients)
+│   │   ├── Ingestion CLI            : 10 (flags, dry-run, load orchestration)
+│   │   └── Readers, Models & E2E    :  8 (2017 reader + end-to-end, models, smoke)
+│   └── REST API (FastAPI)           :  42 passed
+│       ├── Repositories             : 16 (sample + live BigQuery: measurements/trends/quality)
+│       ├── Routers                  : 15 (stations, measurements, trends, quality, meta, health)
+│       └── Categories, Config, Wiring: 11 (ISPU band classification, settings, app factory)
 │
-└── dbt Data Quality Tests         : 16 passed in 9.00s
-    ├── `stg_ispu`                 : unique surrogate key, not null checks, accepted categories
-    ├── `dim_stations`             : unique station_id, not null checks, coordinate validation
-    ├── `fct_ispu_daily`           : composite uniqueness, foreign key relationship to dim_stations
-    └── `fct_ispu_monthly_trends`  : unique station-month grain, positive value constraints
+└── dbt Data Quality Tests           :  17 passed
+    ├── `stg_ispu`                   : unique surrogate key, not null checks, accepted categories
+    ├── `stg_ispu_rejects`           : reconciliation — every raw row is staged or rejected (assert_staging_reconciles)
+    ├── `dim_stations`               : unique station_id, not null checks, coordinate validation
+    ├── `fct_ispu_daily`             : composite uniqueness, foreign key relationship to dim_stations
+    └── `fct_ispu_monthly_trends`    : unique station-month grain, positive value constraints
 ```
 
 ---
@@ -194,7 +203,7 @@ terraform apply
 ### Option A: Using Docker Compose (Zero local environment dependencies)
 
 ```bash
-# 1. Run the entire Python test suite (80 tests)
+# 1. Run the entire Python test suite (142 tests)
 docker compose run --rm test
 
 # 2. Ingest raw data to GCS Bucket & BigQuery
@@ -203,7 +212,7 @@ docker compose run --rm ingest
 # 3. Build dbt models (Staging view + Mart tables)
 docker compose run --rm dbt-run
 
-# 4. Run dbt data quality and constraint tests (16 tests)
+# 4. Run dbt data quality and constraint tests (17 tests)
 docker compose run --rm dbt-test
 
 # 5. Execute full end-to-end pipeline in one command
@@ -253,10 +262,13 @@ jakarta-air-quality-pipeline/
 │   ├── profiles.yml               # BigQuery connection profiles (asia-southeast2)
 │   ├── macros/
 │   │   └── generate_schema_name.sql # Custom schema naming for clean dataset mapping
+│   ├── tests/
+│   │   └── assert_staging_reconciles.sql # Raw <-> staging row-count reconciliation
 │   └── models/
 │       ├── staging/
 │       │   ├── sources.yml        # Raw BigQuery table declarations
 │       │   ├── stg_ispu.sql       # Cleaned, typed, deduplicated staging view
+│       │   ├── stg_ispu_rejects.sql # Rows excluded from staging, with reject_reason
 │       │   └── stg_ispu.yml       # Automated schema & data quality tests
 │       └── marts/
 │           ├── dim_stations.sql   # SPKU station dimensions with coordinates
@@ -269,7 +281,9 @@ jakarta-air-quality-pipeline/
 │   └── ingestion/
 │       ├── __init__.py
 │       ├── cli.py                 # CLI entry point (--file, --dir, --load, --bucket)
+│       ├── cross_row.py           # Cross-row duplicate-key quarantine rule (whole-file view)
 │       ├── detector.py            # Header signature layout detection
+│       ├── discover.py            # GCS new-file discovery runner for scheduled ingestion
 │       ├── dispatcher.py          # Validator routing and harmonization orchestrator
 │       ├── harmonizer.py          # Canonical schema mapping and quarantine packaging
 │       ├── loader.py              # Idempotent BigQuery loader (MD5 deduplication)
@@ -284,7 +298,7 @@ jakarta-air-quality-pipeline/
 │   ├── github.tf                  # GitHub provider & action variables integration
 │   ├── variables.tf               # Terraform input variable definitions
 │   └── outputs.tf                 # Output endpoints and IDs
-├── tests/                         # Pytest test suite (80 unit & integration tests)
+├── tests/                         # Pytest test suite (142 unit & integration tests)
 ├── docker-compose.yml             # Local pipeline orchestration shortcuts
 ├── Dockerfile                     # Multi-stage container definition
 ├── pytest.ini                     # Pytest runner configuration
@@ -301,13 +315,13 @@ jakarta-air-quality-pipeline/
 - [x] **Bronze Storage (Data Lake):** Raw files immutably archived in `gs://hudza-aq-raw/raw/`.
 - [x] **Layout Detection Engine:** Automated fingerprinting across 6 distinct tabular layouts.
 - [x] **Strict Validation Engine:** Date normalization, numeric checks, and station code validation.
-- [x] **Quarantine Segregation:** Preserved 401 defective rows with reason codes; zero silent drops.
+- [x] **Quarantine Segregation:** Preserved 555 defective rows with reason codes; zero silent drops.
 - [x] **Schema Harmonization:** Unified heterogeneous columns into 12 canonical attributes.
 - [x] **Idempotent Ingestion:** MD5 file hash deduplication prevents duplicate loads.
 - [x] **CLI Runner:** Configurable ingestion runner supporting local dry-run, GCS, and BigQuery.
 - [x] **dbt Staging Models:** Data type casting, station code harmonization, and window deduplication.
 - [x] **dbt Marts Models:** Designed `dim_stations`, partitioned `fct_ispu_daily`, and `fct_ispu_monthly_trends`.
-- [x] **Automated Data Quality Testing:** 96 tests passing across Python unit tests and dbt constraints.
+- [x] **Automated Data Quality Testing:** 159 tests passing across Python unit tests and dbt constraints.
 - [x] **Containerization:** Production Docker image and multi-service Docker Compose workflow.
 - [x] **Keyless CI/CD:** GitHub Actions workflow with Google Cloud Workload Identity Federation (WIF).
 
