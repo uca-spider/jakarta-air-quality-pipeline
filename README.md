@@ -313,6 +313,33 @@ jakarta-air-quality-pipeline/
 
 ---
 
+## REST API (Serving Layer)
+
+A **FastAPI** service (`src/api/`) serves the Gold marts over HTTP. It is deploy-ready (containerized, env-configured) and ships a dual data-source design:
+
+- **`sample` mode (default):** serves small synthetic fixtures, so the API and its auto-generated Swagger docs run with **zero GCP setup** — ideal for a quick demo.
+- **`live` mode:** queries BigQuery via keyless ADC, with **cost-aware SQL** (daily queries filter the monthly partition and `station_id` cluster key; trends read the pre-aggregated monthly mart).
+
+```bash
+docker compose up api          # -> http://localhost:8000/docs  (Swagger UI)
+# or locally:
+uv run uvicorn src.api.main:app --reload
+```
+
+| Method & path | Mart | Description |
+|---|---|---|
+| `GET /health` | — | Liveness; `?ready=1` checks the data source (503 if down). |
+| `GET /meta/categories` | static | ISPU category bands and ranges. |
+| `GET /stations` · `GET /stations/{id}` | `dim_stations` | Station list / one station (404 if unknown). |
+| `GET /stations/{id}/daily?start=&end=` | `fct_ispu_daily` | Daily series (bounded date range). |
+| `GET /stations/{id}/latest` | `fct_ispu_daily` | Most recent reading. |
+| `GET /stations/{id}/trends?year=` | `fct_ispu_monthly_trends` | Monthly trend metrics. |
+| `GET /quality/summary` | `aq_raw.*` | Valid vs quarantined counts per source file. |
+
+**Dashboards:** Looker Studio connects directly to the BigQuery marts via its native connector, not through this API. See [`src/api/README.md`](src/api/README.md) for full configuration.
+
+---
+
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details. Raw air quality data is sourced from the [Jakarta Open Data Portal](https://data.jakarta.go.id/) under open government data terms.

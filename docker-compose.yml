@@ -45,3 +45,20 @@ services:
              cd /app/dbt &&
              dbt run &&
              dbt test"
+
+  # 6. REST API (FastAPI). Runs in offline 'sample' mode by default, so it needs
+  #    NO GCP credentials. Set API_DATA_MODE=live to query BigQuery via ADC.
+  #    Swagger UI: http://localhost:8000/docs
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: jakarta-aq-pipeline:latest
+    environment:
+      - API_DATA_MODE=${API_DATA_MODE:-sample}
+      - API_GCP_PROJECT=${GCP_PROJECT:-jakarta-air-quality}
+      - API_MARTS_DATASET=${API_MARTS_DATASET:-aq_marts}
+      - API_RAW_DATASET=${API_RAW_DATASET:-aq_raw}
+    ports:
+      - "8000:8000"
+    command: ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
