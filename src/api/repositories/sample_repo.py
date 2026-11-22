@@ -9,6 +9,7 @@ from datetime import date
 from pathlib import Path
 
 from src.api.schemas.measurement import DailyMeasurement
+from src.api.schemas.quality import QualitySummaryRow
 from src.api.schemas.station import Station
 from src.api.schemas.trend import MonthlyTrend
 from src.api.services.ispu_categories import derive_category
@@ -39,6 +40,9 @@ class SampleRepository:
         self._trends: list[MonthlyTrend] = [
             MonthlyTrend(**row) for row in _load("trends.json")
         ]
+        self._quality: list[QualitySummaryRow] = [
+            QualitySummaryRow(**row) for row in _load("quality.json")
+        ]
 
     def get_stations(self) -> list[Station]:
         return list(self._stations)
@@ -67,3 +71,6 @@ class SampleRepository:
         if year is not None:
             rows = [t for t in rows if t.year == year]
         return sorted(rows, key=lambda t: (t.year, t.month))
+
+    def get_quality_summary(self) -> list[QualitySummaryRow]:
+        return list(self._quality)

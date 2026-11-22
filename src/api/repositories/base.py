@@ -4,6 +4,7 @@ from datetime import date
 from typing import Protocol, runtime_checkable
 
 from src.api.schemas.measurement import DailyMeasurement
+from src.api.schemas.quality import QualitySummaryRow
 from src.api.schemas.station import Station
 from src.api.schemas.trend import MonthlyTrend
 
@@ -42,4 +43,8 @@ class IspuRepository(Protocol):
         self, station_id: str, year: int | None
     ) -> list[MonthlyTrend]:
         """Return monthly trend rows for a station, optionally filtered by year."""
+        ...
+
+    def get_quality_summary(self) -> list[QualitySummaryRow]:
+        """Return per-source-file valid vs quarantined counts and reasons."""
         ...

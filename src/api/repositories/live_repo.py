@@ -10,6 +10,7 @@ from google.cloud import bigquery
 from src.api.config import Settings
 from src.api.repositories.base import RepositoryError
 from src.api.schemas.measurement import DailyMeasurement
+from src.api.schemas.quality import QualitySummaryRow
 from src.api.schemas.station import Station
 from src.api.schemas.trend import MonthlyTrend
 from src.api.services.ispu_categories import derive_category
@@ -64,6 +65,10 @@ class LiveRepository:
     def _marts(self, table: str) -> str:
         s = self._settings
         return f"{s.gcp_project}.{s.marts_dataset}.{table}"
+
+    def _raw(self, table: str) -> str:
+        s = self._settings
+        return f"{s.gcp_project}.{s.raw_dataset}.{table}"
 
     def _run(
         self,
@@ -140,3 +145,29 @@ class LiveRepository:
             f"{where} ORDER BY year, month"
         )
         return [MonthlyTrend(**dict(r)) for r in self._run(sql, params)]
+
+    def get_quality_summary(self) -> list[QualitySummaryRow]:
+        sql = (
+            "WITH valid AS ("
+            f"  SELECT source_file, COUNT(*) AS valid_rows FROM `{self._raw('ispu')}` "
+            "  GROUP BY source_file"
+            "), quar AS ("
+            "  SELECT source_file, COUNT(*) AS quarantined_rows "
+            f"  FROM `{self._raw('ispu_quarantine')}` GROUP BY source_file"
+            "), dominant AS ("
+            "  SELECT source_file, quarantine_reason AS dominant_reason FROM ("
+            "    SELECT source_file, quarantine_reason, "
+            "    ROW_NUMBER() OVER (PARTITION BY source_file ORDER BY COUNT(*) DESC) AS rn "
+            f"    FROM `{self._raw('ispu_quarantine')}` GROUP BY source_file, quarantine_reason"
+            "  ) WHERE rn = 1"
+            ") "
+            "SELECT COALESCE(v.source_file, q.source_file) AS source_file, "
+            "COALESCE(v.valid_rows, 0) AS valid_rows, "
+            "COALESCE(q.quarantined_rows, 0) AS quarantined_rows, "
+            "d.dominant_reason "
+            "FROM valid v "
+            "FULL OUTER JOIN quar q ON v.source_file = q.source_file "
+            "LEFT JOIN dominant d ON COALESCE(v.source_file, q.source_file) = d.source_file "
+            "ORDER BY source_file"
+        )
+        return [QualitySummaryRow(**dict(r)) for r in self._run(sql)]
