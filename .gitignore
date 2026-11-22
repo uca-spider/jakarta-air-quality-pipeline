@@ -28,5 +28,6 @@ data/
 *.xls
 #superpowers
 .superpowers/
+docs/superpowers/
 #API json
 !src/api/repositories/sample_data/*.json
