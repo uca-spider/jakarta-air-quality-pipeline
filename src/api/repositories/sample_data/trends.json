@@ -1,0 +1,42 @@
+[
+  {
+    "monthly_trend_id": "DKI1_2024_01", "station_id": "DKI1",
+    "station_name": "Bunderan HI", "administrative_area": "Jakarta Pusat",
+    "year": 2024, "month": 1, "month_name": "January",
+    "total_recorded_days": 31, "days_with_pm25": 31,
+    "avg_max_ispu": 58.4, "peak_max_ispu": 95,
+    "avg_pm10": 45.2, "avg_pm25": 55.1,
+    "good_days_count": 8, "moderate_days_count": 21, "unhealthy_days_count": 2,
+    "pct_unhealthy_days": 6.45
+  },
+  {
+    "monthly_trend_id": "DKI1_2024_02", "station_id": "DKI1",
+    "station_name": "Bunderan HI", "administrative_area": "Jakarta Pusat",
+    "year": 2024, "month": 2, "month_name": "February",
+    "total_recorded_days": 29, "days_with_pm25": 29,
+    "avg_max_ispu": 62.1, "peak_max_ispu": 110,
+    "avg_pm10": 48.0, "avg_pm25": 60.3,
+    "good_days_count": 5, "moderate_days_count": 21, "unhealthy_days_count": 3,
+    "pct_unhealthy_days": 10.34
+  },
+  {
+    "monthly_trend_id": "DKI1_2025_01", "station_id": "DKI1",
+    "station_name": "Bunderan HI", "administrative_area": "Jakarta Pusat",
+    "year": 2025, "month": 1, "month_name": "January",
+    "total_recorded_days": 31, "days_with_pm25": 31,
+    "avg_max_ispu": 54.9, "peak_max_ispu": 88,
+    "avg_pm10": 42.7, "avg_pm25": 51.0,
+    "good_days_count": 11, "moderate_days_count": 19, "unhealthy_days_count": 1,
+    "pct_unhealthy_days": 3.23
+  },
+  {
+    "monthly_trend_id": "DKI2_2024_01", "station_id": "DKI2",
+    "station_name": "Kelapa Gading", "administrative_area": "Jakarta Utara",
+    "year": 2024, "month": 1, "month_name": "January",
+    "total_recorded_days": 30, "days_with_pm25": 30,
+    "avg_max_ispu": 66.0, "peak_max_ispu": 125,
+    "avg_pm10": 50.5, "avg_pm25": 64.2,
+    "good_days_count": 4, "moderate_days_count": 22, "unhealthy_days_count": 4,
+    "pct_unhealthy_days": 13.33
+  }
+]

@@ -1,0 +1,42 @@
+[
+  {
+    "station_id": "DKI1",
+    "station_name": "Bunderan HI",
+    "station_label": "DKI1 - Bunderan HI",
+    "administrative_area": "Jakarta Pusat",
+    "latitude": -6.195,
+    "longitude": 106.823
+  },
+  {
+    "station_id": "DKI2",
+    "station_name": "Kelapa Gading",
+    "station_label": "DKI2 - Kelapa Gading",
+    "administrative_area": "Jakarta Utara",
+    "latitude": -6.1557,
+    "longitude": 106.908
+  },
+  {
+    "station_id": "DKI3",
+    "station_name": "Jagakarsa",
+    "station_label": "DKI3 - Jagakarsa",
+    "administrative_area": "Jakarta Selatan",
+    "latitude": -6.3315,
+    "longitude": 106.819
+  },
+  {
+    "station_id": "DKI4",
+    "station_name": "Lubang Buaya",
+    "station_label": "DKI4 - Lubang Buaya",
+    "administrative_area": "Jakarta Timur",
+    "latitude": -6.2891,
+    "longitude": 106.901
+  },
+  {
+    "station_id": "DKI5",
+    "station_name": "Kebon Jeruk",
+    "station_label": "DKI5 - Kebon Jeruk",
+    "administrative_area": "Jakarta Barat",
+    "latitude": -6.1904,
+    "longitude": 106.767
+  }
+]

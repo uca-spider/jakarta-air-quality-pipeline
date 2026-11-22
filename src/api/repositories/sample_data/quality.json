@@ -1,0 +1,6 @@
+[
+  {"source_file": "ispu-2016.xls", "valid_rows": 1670, "quarantined_rows": 160, "dominant_reason": "DATE_PERIOD_MISMATCH"},
+  {"source_file": "ispu-2017.xls", "valid_rows": 1825, "quarantined_rows": 0, "dominant_reason": null},
+  {"source_file": "ispu-2020.xls", "valid_rows": 1620, "quarantined_rows": 210, "dominant_reason": "INVALID_STATION_CODE"},
+  {"source_file": "ispu-2022.xls", "valid_rows": 336, "quarantined_rows": 29, "dominant_reason": "INVALID_STATION_CODE"}
+]

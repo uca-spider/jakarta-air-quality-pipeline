@@ -1,0 +1,32 @@
+[
+  {
+    "measurement_date": "2024-01-01",
+    "station_id": "DKI1",
+    "pm10": 40, "pm25": 30, "so2": 5, "co": 10, "o3": 20, "no2": 8,
+    "max_ispu": 40, "critical_pollutant": "PM10", "category": "BAIK"
+  },
+  {
+    "measurement_date": "2024-01-02",
+    "station_id": "DKI1",
+    "pm10": 55, "pm25": 60, "so2": 6, "co": 12, "o3": 25, "no2": 9,
+    "max_ispu": 60, "critical_pollutant": "PM25", "category": "SEDANG"
+  },
+  {
+    "measurement_date": "2024-01-04",
+    "station_id": "DKI1",
+    "pm10": 70, "pm25": 75, "so2": 7, "co": 13, "o3": 28, "no2": 10,
+    "max_ispu": 75, "critical_pollutant": "PM25", "category": null
+  },
+  {
+    "measurement_date": "2024-01-01",
+    "station_id": "DKI2",
+    "pm10": 52, "pm25": 55, "so2": 5, "co": 11, "o3": 22, "no2": 8,
+    "max_ispu": 55, "critical_pollutant": "PM25", "category": "SEDANG"
+  },
+  {
+    "measurement_date": "2024-01-05",
+    "station_id": "DKI2",
+    "pm10": 118, "pm25": 120, "so2": 9, "co": 15, "o3": 33, "no2": 12,
+    "max_ispu": 120, "critical_pollutant": "PM25", "category": "TIDAK SEHAT"
+  }
+]
