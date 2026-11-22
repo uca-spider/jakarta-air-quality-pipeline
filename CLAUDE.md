@@ -11,7 +11,7 @@ An end-to-end, production-grade ELT data pipeline that ingests, validates, harmo
 ---
 
 ## Core Rules & Constraints
-1. **Zero Silent Drops:** Invalid rows are never dropped or silently fixed. Route defective rows to `aq_raw.ispu_quarantine` with explicit reason codes (`DATE_PERIOD_MISMATCH`, `INVALID_STATION_CODE`, `NON_NUMERIC_MAX_VALUE`, `INVALID_DATE_FORMAT`).
+1. **Zero Silent Drops:** Invalid rows are never dropped or silently fixed. Route defective rows to `aq_raw.ispu_quarantine` with explicit reason codes (`DATE_PERIOD_MISMATCH`, `INVALID_STATION_CODE`, `NON_NUMERIC_MAX_VALUE`, `INVALID_DATE_FORMAT`, `DUPLICATE_DATE_STATION_IN_FILE`). The last one is a cross-row rule: when a `(measurement_date, station_id)` key repeats within a single file with differing values, the whole group is quarantined because picking one would be guessing.
 2. **Preserve Raw Tokens:** Data in `aq_raw` retains original string representation (`---`, `-`, `N/A`, empty). Type-casting is strictly handled in dbt staging.
 3. **Idempotent Ingestion:** Each file load computes an MD5 `file_hash`. Existing records with matching hash are deleted before insertion.
 4. **Never Guess Missing Data:** Do not guess missing stations (e.g. March 2020) or synthesize dates without deterministic period context. Quarantine them.
@@ -26,12 +26,13 @@ An end-to-end, production-grade ELT data pipeline that ingests, validates, harmo
 ### 1. Bronze Layer (Data Lake & Raw)
 - **GCS Bucket:** `gs://hudza-aq-raw/raw/` (immutable backup of original XLS files with MD5 checksums).
 - **BigQuery Dataset:** `aq_raw` (GCP Project: `jakarta-air-quality`, Location: `asia-southeast2` Jakarta).
-  - `aq_raw.ispu`: 14,770 valid rows conforming to 12 canonical columns + `file_hash` + `ingested_at`.
-  - `aq_raw.ispu_quarantine`: 401 defective rows conforming to canonical columns + `quarantine_reason` + `file_hash` + `ingested_at`.
+  - `aq_raw.ispu`: 14,616 valid rows conforming to 12 canonical columns + `file_hash` + `ingested_at`.
+  - `aq_raw.ispu_quarantine`: 555 defective rows conforming to canonical columns + `quarantine_reason` + `file_hash` + `ingested_at`.
 
 ### 2. Silver Layer (Staging)
 - **BigQuery Dataset:** `aq_staging`
-  - `aq_staging.stg_ispu` (View): Cleansed, types cast (`INT64`, `DATE`), station IDs normalized to `DKI1`–`DKI5`, missing tokens mapped to `NULL`, deduplicated with `QUALIFY ROW_NUMBER() OVER (PARTITION BY measurement_date, station_id ORDER BY ingested_at DESC) = 1`.
+  - `aq_staging.stg_ispu` (View): Cleansed, types cast (`INT64`, `DATE`), station IDs normalized to `DKI1`–`DKI5`, missing tokens mapped to `NULL`, deduplicated with `QUALIFY ROW_NUMBER() OVER (PARTITION BY measurement_date, station_id ORDER BY ingested_at DESC, source_file DESC) = 1`.
+  - `aq_staging.stg_ispu_rejects` (View): Every raw row that does NOT reach `stg_ispu`, with a `reject_reason` (`UNPARSEABLE_DATE`, `UNKNOWN_STATION`, `OVERLAP_ACROSS_FILES`). Makes the staging dedup explicit instead of a silent drop. The invariant `count(aq_raw.ispu) = count(stg_ispu) + count(stg_ispu_rejects)` is enforced by the dbt test `assert_staging_reconciles`.
 
 ### 3. Gold Layer (Analytics Marts)
 - **BigQuery Dataset:** `aq_marts`
@@ -44,13 +45,13 @@ An end-to-end, production-grade ELT data pipeline that ingests, validates, harmo
 ## Key Commands & Workflow
 
 ```bash
-# Run Python Unit & Integration Tests (80 tests)
+# Run Python Unit & Integration Tests (142 tests)
 uv run pytest -v
 
 # Run Ingestion CLI (Dry-run or Load to GCS + BigQuery)
 uv run python -m src.ingestion.cli --dir data/raw/ --load --project jakarta-air-quality --bucket hudza-aq-raw
 
-# Run dbt Models & Quality Tests (16 tests)
+# Run dbt Models & Quality Tests (17 tests)
 cd dbt && uv run dbt run --profiles-dir . && uv run dbt test --profiles-dir .
 
 # Docker Compose Shortcuts
