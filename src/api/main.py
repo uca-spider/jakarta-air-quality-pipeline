@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 
 from src.api.config import get_settings
 from src.api.repositories.base import RepositoryError
-from src.api.routers import health, meta, stations
+from src.api.routers import health, measurements, meta, stations
 
 API_TITLE = "Jakarta Air Quality API"
 API_DESCRIPTION = (
@@ -44,6 +44,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(meta.router)
     app.include_router(stations.router)
+    app.include_router(measurements.router)
 
     return app
 

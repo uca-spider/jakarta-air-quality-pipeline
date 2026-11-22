@@ -32,3 +32,11 @@ def classify_index(index: int | None) -> str | None:
         if band.max is None or index <= band.max:
             return band.label
     return ISPU_BANDS[-1].label
+
+
+def derive_category(stored: str | None, max_index: int | None) -> str | None:
+    """Keep the stored category if present; otherwise derive it from the index.
+
+    Never invents a category when neither is available (both None -> None).
+    """
+    return stored if stored is not None else classify_index(max_index)

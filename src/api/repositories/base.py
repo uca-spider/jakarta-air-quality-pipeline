@@ -1,7 +1,9 @@
 """Repository interface and shared error type for the API data layer."""
 
+from datetime import date
 from typing import Protocol, runtime_checkable
 
+from src.api.schemas.measurement import DailyMeasurement
 from src.api.schemas.station import Station
 
 
@@ -23,4 +25,14 @@ class IspuRepository(Protocol):
 
     def get_station(self, station_id: str) -> Station | None:
         """Return one station by id, or None if it does not exist."""
+        ...
+
+    def get_daily_series(
+        self, station_id: str, start: date, end: date
+    ) -> list[DailyMeasurement]:
+        """Return daily measurements for a station within [start, end]."""
+        ...
+
+    def get_latest(self, station_id: str) -> DailyMeasurement | None:
+        """Return the most recent measurement for a station, or None."""
         ...

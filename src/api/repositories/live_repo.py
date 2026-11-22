@@ -1,6 +1,7 @@
 """Live repository backend querying BigQuery marts (cost-aware SQL)."""
 
 from collections.abc import Sequence
+from datetime import date
 from typing import Any
 
 from google.api_core.exceptions import GoogleAPIError
@@ -8,7 +9,14 @@ from google.cloud import bigquery
 
 from src.api.config import Settings
 from src.api.repositories.base import RepositoryError
+from src.api.schemas.measurement import DailyMeasurement
 from src.api.schemas.station import Station
+from src.api.services.ispu_categories import derive_category
+
+_DAILY_COLUMNS = (
+    "measurement_date, station_id, pm10, pm25, so2, co, o3, no2, "
+    "max_ispu, critical_pollutant, category"
+)
 
 
 def _to_station(row: Any) -> Station:
@@ -19,6 +27,22 @@ def _to_station(row: Any) -> Station:
         administrative_area=row["administrative_area"],
         latitude=row["latitude"],
         longitude=row["longitude"],
+    )
+
+
+def _to_daily(row: Any) -> DailyMeasurement:
+    return DailyMeasurement(
+        measurement_date=row["measurement_date"],
+        station_id=row["station_id"],
+        pm10=row["pm10"],
+        pm25=row["pm25"],
+        so2=row["so2"],
+        co=row["co"],
+        o3=row["o3"],
+        no2=row["no2"],
+        max_ispu=row["max_ispu"],
+        critical_pollutant=row["critical_pollutant"],
+        category=derive_category(row["category"], row["max_ispu"]),
     )
 
 
@@ -66,3 +90,31 @@ class LiveRepository:
         params = [bigquery.ScalarQueryParameter("station_id", "STRING", station_id)]
         rows = self._run(sql, params)
         return _to_station(rows[0]) if rows else None
+
+    def get_daily_series(
+        self, station_id: str, start: date, end: date
+    ) -> list[DailyMeasurement]:
+        # Filters on the monthly partition key (measurement_date) and the
+        # cluster key (station_id) to minimise bytes scanned.
+        sql = (
+            f"SELECT {_DAILY_COLUMNS} FROM `{self._marts('fct_ispu_daily')}` "
+            "WHERE station_id = @station_id "
+            "AND measurement_date BETWEEN @start AND @end "
+            "ORDER BY measurement_date"
+        )
+        params = [
+            bigquery.ScalarQueryParameter("station_id", "STRING", station_id),
+            bigquery.ScalarQueryParameter("start", "DATE", start),
+            bigquery.ScalarQueryParameter("end", "DATE", end),
+        ]
+        return [_to_daily(r) for r in self._run(sql, params)]
+
+    def get_latest(self, station_id: str) -> DailyMeasurement | None:
+        sql = (
+            f"SELECT {_DAILY_COLUMNS} FROM `{self._marts('fct_ispu_daily')}` "
+            "WHERE station_id = @station_id "
+            "ORDER BY measurement_date DESC LIMIT 1"
+        )
+        params = [bigquery.ScalarQueryParameter("station_id", "STRING", station_id)]
+        rows = self._run(sql, params)
+        return _to_daily(rows[0]) if rows else None
