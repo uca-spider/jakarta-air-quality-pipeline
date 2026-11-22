@@ -11,7 +11,15 @@ from src.api.config import Settings
 from src.api.repositories.base import RepositoryError
 from src.api.schemas.measurement import DailyMeasurement
 from src.api.schemas.station import Station
+from src.api.schemas.trend import MonthlyTrend
 from src.api.services.ispu_categories import derive_category
+
+_TREND_COLUMNS = (
+    "monthly_trend_id, station_id, station_name, administrative_area, year, month, "
+    "month_name, total_recorded_days, days_with_pm25, avg_max_ispu, peak_max_ispu, "
+    "avg_pm10, avg_pm25, good_days_count, moderate_days_count, unhealthy_days_count, "
+    "pct_unhealthy_days"
+)
 
 _DAILY_COLUMNS = (
     "measurement_date, station_id, pm10, pm25, so2, co, o3, no2, "
@@ -118,3 +126,17 @@ class LiveRepository:
         params = [bigquery.ScalarQueryParameter("station_id", "STRING", station_id)]
         rows = self._run(sql, params)
         return _to_daily(rows[0]) if rows else None
+
+    def get_monthly_trends(
+        self, station_id: str, year: int | None
+    ) -> list[MonthlyTrend]:
+        where = "WHERE station_id = @station_id"
+        params = [bigquery.ScalarQueryParameter("station_id", "STRING", station_id)]
+        if year is not None:
+            where += " AND year = @year"
+            params.append(bigquery.ScalarQueryParameter("year", "INT64", year))
+        sql = (
+            f"SELECT {_TREND_COLUMNS} FROM `{self._marts('fct_ispu_monthly_trends')}` "
+            f"{where} ORDER BY year, month"
+        )
+        return [MonthlyTrend(**dict(r)) for r in self._run(sql, params)]

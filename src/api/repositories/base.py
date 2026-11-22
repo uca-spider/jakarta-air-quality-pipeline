@@ -5,6 +5,7 @@ from typing import Protocol, runtime_checkable
 
 from src.api.schemas.measurement import DailyMeasurement
 from src.api.schemas.station import Station
+from src.api.schemas.trend import MonthlyTrend
 
 
 class RepositoryError(Exception):
@@ -35,4 +36,10 @@ class IspuRepository(Protocol):
 
     def get_latest(self, station_id: str) -> DailyMeasurement | None:
         """Return the most recent measurement for a station, or None."""
+        ...
+
+    def get_monthly_trends(
+        self, station_id: str, year: int | None
+    ) -> list[MonthlyTrend]:
+        """Return monthly trend rows for a station, optionally filtered by year."""
         ...

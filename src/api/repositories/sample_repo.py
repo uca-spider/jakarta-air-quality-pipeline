@@ -10,6 +10,7 @@ from pathlib import Path
 
 from src.api.schemas.measurement import DailyMeasurement
 from src.api.schemas.station import Station
+from src.api.schemas.trend import MonthlyTrend
 from src.api.services.ispu_categories import derive_category
 
 _SAMPLE_DIR = Path(__file__).parent / "sample_data"
@@ -35,6 +36,9 @@ class SampleRepository:
         self._daily: list[DailyMeasurement] = [
             _build_daily(row) for row in _load("daily.json")
         ]
+        self._trends: list[MonthlyTrend] = [
+            MonthlyTrend(**row) for row in _load("trends.json")
+        ]
 
     def get_stations(self) -> list[Station]:
         return list(self._stations)
@@ -55,3 +59,11 @@ class SampleRepository:
     def get_latest(self, station_id: str) -> DailyMeasurement | None:
         rows = [m for m in self._daily if m.station_id == station_id]
         return max(rows, key=lambda m: m.measurement_date) if rows else None
+
+    def get_monthly_trends(
+        self, station_id: str, year: int | None
+    ) -> list[MonthlyTrend]:
+        rows = [t for t in self._trends if t.station_id == station_id]
+        if year is not None:
+            rows = [t for t in rows if t.year == year]
+        return sorted(rows, key=lambda t: (t.year, t.month))
