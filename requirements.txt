@@ -7,3 +7,7 @@ pytest
 lxml>=5.0.0
 pyarrow
 dbt-bigquery
+fastapi
+uvicorn[standard]
+pydantic-settings
+httpx
