@@ -8,21 +8,22 @@ services:
     environment:
       - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/aq-key.json
       - GCP_PROJECT=${GCP_PROJECT:-jakarta-air-quality}
+      - RAW_BUCKET=${RAW_BUCKET:-hudza-aq-raw}
       - DBT_PROFILES_DIR=/app/dbt
     volumes:
       # Mount GCP credentials and local raw data read-only
       - ${GCP_KEY_PATH:-${GOOGLE_APPLICATION_CREDENTIALS:-/mnt/c/Users/DELL/gcp-keys/aq-key.json}}:/app/credentials/aq-key.json:ro
       - ./data:/app/data:ro
 
-  # 1. Run Python unit & integration test suite (78 tests)
+  # 1. Run Python unit & integration test suite (now 80 tests!)
   test:
     <<: *base
     command: ["pytest", "-v"]
 
-  # 2. Run CLI Ingestion into BigQuery (aq_raw.ispu & aq_raw.ispu_quarantine)
+  # 2. Run CLI Ingestion into GCS Bucket (Bronze) and BigQuery (Raw)
   ingest:
     <<: *base
-    command: ["python", "-m", "src.ingestion.cli", "--dir", "data/raw/", "--load", "--project", "${GCP_PROJECT:-jakarta-air-quality}"]
+    command: ["python", "-m", "src.ingestion.cli", "--dir", "data/raw/", "--load", "--project", "${GCP_PROJECT:-jakarta-air-quality}", "--bucket", "${RAW_BUCKET:-hudza-aq-raw}"]
 
   # 3. Execute dbt models (Staging views + Marts partitioned tables)
   dbt-run:
@@ -36,11 +37,11 @@ services:
     working_dir: /app/dbt
     command: ["dbt", "test"]
 
-  # 5. Full Pipeline end-to-end (Ingest raw -> dbt run -> dbt test)
+  # 5. Full Pipeline end-to-end (Backup to GCS + Ingest raw BQ -> dbt run -> dbt test)
   pipeline:
     <<: *base
     command: >
-      sh -c "python -m src.ingestion.cli --dir data/raw/ --load --project ${GCP_PROJECT:-jakarta-air-quality} &&
+      sh -c "python -m src.ingestion.cli --dir data/raw/ --load --project ${GCP_PROJECT:-jakarta-air-quality} --bucket ${RAW_BUCKET:-hudza-aq-raw} &&
              cd /app/dbt &&
              dbt run &&
              dbt test"

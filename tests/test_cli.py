@@ -3,6 +3,7 @@
 Strategy:
 - Mock dispatch_and_validate so tests don't touch real files
 - Mock load_to_bigquery so tests don't touch BigQuery
+- Mock upload_file_to_gcs so tests don't touch Google Cloud Storage
 - Capture stdout to assert printed output
 """
 
@@ -83,6 +84,23 @@ def test_process_file_with_load_calls_loader(capsys, tmp_path):
     mock_loader.assert_called_once_with(mock_result, source_file=fake_file, project="test-project")
     captured = capsys.readouterr()
     assert "Loaded to BigQuery" in captured.out or "BigQuery" in captured.out
+
+
+def test_process_file_with_bucket_uploads_to_gcs(capsys, tmp_path):
+    """process_file calls upload_file_to_gcs when load=True and bucket is provided."""
+    fake_file = tmp_path / "ISPU_2017.xls"
+    fake_file.write_text("<table></table>")
+
+    mock_result = _make_result(LayoutType.LAYOUT_A, n_valid=10, n_quarantine=0)
+
+    with patch("src.ingestion.cli.dispatch_and_validate", return_value=mock_result), \
+         patch("src.ingestion.cli.load_to_bigquery"), \
+         patch("src.ingestion.cli.upload_file_to_gcs", return_value="gs://hudza-aq-raw/raw/ISPU_2017.xls") as mock_gcs:
+        process_file(fake_file, load=True, project="test-project", bucket="hudza-aq-raw")
+
+    mock_gcs.assert_called_once_with(fake_file, bucket_name="hudza-aq-raw", project="test-project")
+    captured = capsys.readouterr()
+    assert "Uploaded raw file to gs://hudza-aq-raw/raw/ISPU_2017.xls" in captured.out
 
 
 def test_process_file_without_load_does_not_call_loader(capsys, tmp_path):
